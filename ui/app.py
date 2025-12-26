@@ -483,45 +483,49 @@ with tab1:
             db_connected = health.get('db_connected', False)
             db_tables = health.get('db_tables', {})
             
-            # Status-Indikatoren in Spalten
-            status_cols = st.columns(5)
+            # Status-Indikatoren in 2 Zeilen (je 3 Spalten)
+            status_cols_row1 = st.columns(3)
+            status_cols_row2 = st.columns(3)
             
-            # 1. Verbunden
-            with status_cols[0]:
+            # Zeile 1: Verbunden, coin_metrics, coin_streams
+            with status_cols_row1[0]:
                 if db_connected:
                     st.success("✅ Verbunden")
                 else:
                     st.error("❌ Nicht verbunden")
             
-            # 2. coin_metrics
-            with status_cols[1]:
+            with status_cols_row1[1]:
                 if db_tables.get('coin_metrics_exists', False):
                     st.success("✅ coin_metrics")
                 else:
                     st.error("❌ coin_metrics")
             
-            # 3. coin_streams
-            with status_cols[2]:
+            with status_cols_row1[2]:
                 if db_tables.get('coin_streams_exists', False):
                     st.success("✅ coin_streams")
                 else:
                     st.error("❌ coin_streams")
             
-            # 4. discovered_coins
-            with status_cols[3]:
+            # Zeile 2: discovered_coins, ref_coin_phases, exchange_rates
+            with status_cols_row2[0]:
                 if db_tables.get('discovered_coins_exists', False):
                     st.success("✅ discovered_coins")
                 else:
                     st.error("❌ discovered_coins")
             
-            # 5. ref_coin_phases
-            with status_cols[4]:
+            with status_cols_row2[1]:
                 if db_tables.get('ref_coin_phases_exists', False):
                     st.success("✅ ref_coin_phases")
                 else:
                     st.error("❌ ref_coin_phases")
+            
+            with status_cols_row2[2]:
+                if db_tables.get('exchange_rates_exists', False):
+                    st.success("✅ exchange_rates")
+                else:
+                    st.error("❌ exchange_rates")
         
-        # Exchange Rates Status in separater Zeile (wenn vorhanden)
+        # Exchange Rates Details (wenn Tabelle vorhanden)
         if health and db_tables.get('exchange_rates_exists', False):
             exchange_rates = health.get('exchange_rates', {})
             st.divider()
@@ -533,7 +537,7 @@ with tab1:
                 if sol_price:
                     st.metric("SOL Preis (USD)", f"${sol_price:,.2f}")
                 else:
-                    st.metric("SOL Preis (USD)", "Keine Daten")
+                    st.metric("SOL Preis (USD)", "Keine Daten", delta="Warten auf n8n", delta_color="off")
             
             with col2:
                 created_at = exchange_rates.get('latest_created_at')
@@ -549,13 +553,19 @@ with tab1:
                     except:
                         st.metric("Letzter Update", created_at[:19] if created_at else "Keine Daten")
                 else:
-                    st.metric("Letzter Update", "Keine Daten")
+                    st.metric("Letzter Update", "Keine Daten", delta="Warten auf n8n", delta_color="off")
             
             with col3:
                 count = exchange_rates.get('entries_count', 0)
-                st.metric("Gesamt Einträge", f"{count:,}")
+                if count > 0:
+                    st.metric("Gesamt Einträge", f"{count:,}")
+                else:
+                    st.metric("Gesamt Einträge", "0", delta="Tabelle leer", delta_color="off")
             
-            st.info("💡 **Exchange Rates** werden vom n8n Workflow alle 60 Sekunden aktualisiert. Sie dienen als 'Wasserstand' für KI-Analysen (echte Pumps vs. Marktbewegungen).")
+            if sol_price or created_at:
+                st.info("💡 **Exchange Rates** werden vom n8n Workflow alle 60 Sekunden aktualisiert. Sie dienen als 'Wasserstand' für KI-Analysen (echte Pumps vs. Marktbewegungen).")
+            else:
+                st.warning("⚠️ **Exchange Rates Tabelle existiert, aber noch keine Daten vorhanden.** Der n8n Workflow sollte alle 60 Sekunden Daten schreiben.")
             
             # Exchange Rates Status (wenn vorhanden)
             exchange_rates = health.get('exchange_rates', {})
