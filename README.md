@@ -36,8 +36,8 @@ Automatisches Tracking-System für Pump.fun Coins mit detaillierten Metriken und
 3. **Deploy**: Coolify erstellt automatisch beide Services (tracker + ui)
 
 4. **Zugriff**:
-   - Tracker API: `http://your-domain:8000/health`
-   - UI: `http://your-domain:8501`
+   - Tracker API: `http://your-domain:8009/health`
+   - UI: `http://your-domain:8499`
 
 ### Option 2: Lokale Installation mit Docker Compose
 
