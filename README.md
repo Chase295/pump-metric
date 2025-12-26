@@ -120,7 +120,7 @@ CREATE TABLE coin_metrics (
 - `GET /health` - Health-Check mit detaillierten Status-Informationen
 - `GET /metrics` - Prometheus-Metriken
 
-### UI Service (Port 8501)
+### UI Service (Port 8499)
 
 - Streamlit Web-Interface mit:
   - Dashboard mit Live-Metriken
