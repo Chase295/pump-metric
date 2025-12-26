@@ -153,15 +153,7 @@ async def health_check(request):
             "coin_metrics_exists": False,
             "coin_streams_exists": False,
             "discovered_coins_exists": False,
-            "ref_coin_phases_exists": False,
-            "exchange_rates_exists": False
-        }
-        
-        # Exchange Rates Status (letzter Eintrag)
-        exchange_rates_status = {
-            "latest_sol_price_usd": None,
-            "latest_created_at": None,
-            "entries_count": 0
+            "ref_coin_phases_exists": False
         }
         
         if db_status and _tracker_instance and _tracker_instance.pool:
@@ -206,33 +198,6 @@ async def health_check(request):
                         )
                     """)
                     db_table_check["ref_coin_phases_exists"] = ref_coin_phases_exists
-                    
-                    # Prüfe exchange_rates Tabelle
-                    exchange_rates_exists = await conn.fetchval("""
-                        SELECT EXISTS (
-                            SELECT FROM information_schema.tables 
-                            WHERE table_schema = 'public' 
-                            AND table_name = 'exchange_rates'
-                        )
-                    """)
-                    db_table_check["exchange_rates_exists"] = exchange_rates_exists
-                    
-                    # Hole Exchange Rates Status (wenn Tabelle existiert)
-                    if exchange_rates_exists:
-                        try:
-                            latest = await conn.fetchrow("""
-                                SELECT sol_price_usd, created_at, 
-                                       (SELECT COUNT(*) FROM exchange_rates) as count
-                                FROM exchange_rates
-                                ORDER BY created_at DESC
-                                LIMIT 1
-                            """)
-                            if latest:
-                                exchange_rates_status["latest_sol_price_usd"] = float(latest["sol_price_usd"]) if latest["sol_price_usd"] else None
-                                exchange_rates_status["latest_created_at"] = latest["created_at"].isoformat() if latest["created_at"] else None
-                                exchange_rates_status["entries_count"] = latest["count"] if latest["count"] else 0
-                        except Exception:
-                            pass
             except Exception as e:
                 # Tabellen-Prüfung fehlgeschlagen - ignorieren
                 pass
@@ -266,7 +231,6 @@ async def health_check(request):
             "status": "healthy" if (db_status and ws_status) else "degraded",
             "db_connected": db_status,
             "db_tables": db_table_check,
-            "exchange_rates": exchange_rates_status,
             "ws_connected": ws_status,
             "uptime_seconds": int(uptime),
             "total_trades": tracker_status.get("total_trades", 0),

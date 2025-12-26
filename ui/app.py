@@ -483,125 +483,43 @@ with tab1:
             db_connected = health.get('db_connected', False)
             db_tables = health.get('db_tables', {})
             
-            # Status-Indikatoren in 2 Zeilen (je 3 Spalten)
-            status_cols_row1 = st.columns(3)
-            status_cols_row2 = st.columns(3)
+            # Status-Indikatoren in Spalten
+            status_cols = st.columns(5)
             
-            # Zeile 1: Verbunden, coin_metrics, coin_streams
-            with status_cols_row1[0]:
+            # 1. Verbunden
+            with status_cols[0]:
                 if db_connected:
                     st.success("✅ Verbunden")
                 else:
                     st.error("❌ Nicht verbunden")
             
-            with status_cols_row1[1]:
+            # 2. coin_metrics
+            with status_cols[1]:
                 if db_tables.get('coin_metrics_exists', False):
                     st.success("✅ coin_metrics")
                 else:
                     st.error("❌ coin_metrics")
             
-            with status_cols_row1[2]:
+            # 3. coin_streams
+            with status_cols[2]:
                 if db_tables.get('coin_streams_exists', False):
                     st.success("✅ coin_streams")
                 else:
                     st.error("❌ coin_streams")
             
-            # Zeile 2: discovered_coins, ref_coin_phases, exchange_rates
-            with status_cols_row2[0]:
+            # 4. discovered_coins
+            with status_cols[3]:
                 if db_tables.get('discovered_coins_exists', False):
                     st.success("✅ discovered_coins")
                 else:
                     st.error("❌ discovered_coins")
             
-            with status_cols_row2[1]:
+            # 5. ref_coin_phases
+            with status_cols[4]:
                 if db_tables.get('ref_coin_phases_exists', False):
                     st.success("✅ ref_coin_phases")
                 else:
                     st.error("❌ ref_coin_phases")
-            
-            with status_cols_row2[2]:
-                if db_tables.get('exchange_rates_exists', False):
-                    st.success("✅ exchange_rates")
-                else:
-                    st.error("❌ exchange_rates")
-        
-        # Exchange Rates Details (wenn Tabelle vorhanden)
-        if health and db_tables.get('exchange_rates_exists', False):
-            exchange_rates = health.get('exchange_rates', {})
-            st.divider()
-            st.subheader("💱 Exchange Rates (Marktstimmung)")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                sol_price = exchange_rates.get('latest_sol_price_usd')
-                if sol_price:
-                    st.metric("SOL Preis (USD)", f"${sol_price:,.2f}")
-                else:
-                    st.metric("SOL Preis (USD)", "Keine Daten", delta="Warten auf n8n", delta_color="off")
-            
-            with col2:
-                created_at = exchange_rates.get('latest_created_at')
-                if created_at:
-                    try:
-                        from datetime import datetime
-                        dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                        ago = int((datetime.now(dt.tzinfo) - dt).total_seconds())
-                        if ago < 120:
-                            st.metric("Letzter Update", f"vor {ago}s", delta="Aktuell", delta_color="normal")
-                        else:
-                            st.metric("Letzter Update", f"vor {ago//60}min", delta="Alt", delta_color="off")
-                    except:
-                        st.metric("Letzter Update", created_at[:19] if created_at else "Keine Daten")
-                else:
-                    st.metric("Letzter Update", "Keine Daten", delta="Warten auf n8n", delta_color="off")
-            
-            with col3:
-                count = exchange_rates.get('entries_count', 0)
-                if count > 0:
-                    st.metric("Gesamt Einträge", f"{count:,}")
-                else:
-                    st.metric("Gesamt Einträge", "0", delta="Tabelle leer", delta_color="off")
-            
-            if sol_price or created_at:
-                st.info("💡 **Exchange Rates** werden vom n8n Workflow alle 60 Sekunden aktualisiert. Sie dienen als 'Wasserstand' für KI-Analysen (echte Pumps vs. Marktbewegungen).")
-            else:
-                st.warning("⚠️ **Exchange Rates Tabelle existiert, aber noch keine Daten vorhanden.** Der n8n Workflow sollte alle 60 Sekunden Daten schreiben.")
-            
-            # Exchange Rates Status (wenn vorhanden)
-            exchange_rates = health.get('exchange_rates', {})
-            if db_tables.get('exchange_rates_exists', False):
-                st.divider()
-                st.subheader("💱 Exchange Rates (Marktstimmung)")
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    sol_price = exchange_rates.get('latest_sol_price_usd')
-                    if sol_price:
-                        st.metric("SOL Preis (USD)", f"${sol_price:,.2f}")
-                    else:
-                        st.metric("SOL Preis (USD)", "Keine Daten")
-                
-                with col2:
-                    created_at = exchange_rates.get('latest_created_at')
-                    if created_at:
-                        try:
-                            from datetime import datetime
-                            dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                            ago = int((datetime.now(dt.tzinfo) - dt).total_seconds())
-                            if ago < 120:
-                                st.metric("Letzter Update", f"vor {ago}s", delta="Aktuell", delta_color="normal")
-                            else:
-                                st.metric("Letzter Update", f"vor {ago//60}min", delta="Alt", delta_color="off")
-                        except:
-                            st.metric("Letzter Update", created_at[:19])
-                    else:
-                        st.metric("Letzter Update", "Keine Daten")
-                
-                with col3:
-                    count = exchange_rates.get('entries_count', 0)
-                    st.metric("Gesamt Einträge", f"{count:,}")
-                
-                st.info("💡 **Exchange Rates** werden vom n8n Workflow alle 60 Sekunden aktualisiert. Sie dienen als 'Wasserstand' für KI-Analysen.")
             
             if health.get('last_error'):
                 st.warning(f"⚠️ Letzter Fehler: {health.get('last_error')}")
@@ -2668,97 +2586,7 @@ if sol_amount >= WHALE_THRESHOLD_SOL:  # Standard: 1.0 SOL
     
     st.divider()
     
-    st.header("📈 14. Exchange Rates & Marktstimmung (n8n Workflow)")
-    
-    st.markdown("""
-    **Ziel**: Erfassung der allgemeinen Marktstimmung ("Wasserstand"), um bei der KI-Analyse echte Token-Pumps 
-    von allgemeinen Marktbewegungen (z.B. SOL-Crash) zu unterscheiden.
-    """)
-    
-    st.subheader("🔄 n8n Workflow (Exchange Rates)")
-    
-    st.markdown("""
-    Ein **separater Workflow**, der unabhängig vom Token-Stream läuft.
-    
-    **Trigger**: Cron-Schedule (alle 60 Sekunden)
-    
-    **Datenquellen**:
-    - **Jupiter API v3**: Aktueller SOL-Preis in USD (So111...112 Mint Address)
-    - **Frankfurter App API**: Aktueller USD zu EUR Wechselkurs
-    
-    **Aktion**: Schreibt einen Snapshot der Marktdaten in die Datenbank.
-    """)
-    
-    st.subheader("🗄️ Datenbankschema: exchange_rates")
-    
-    st.markdown("""
-    Dient als **Referenztabelle** für das spätere Training (Normalisierung der Token-Preise).
-    """)
-    
-    st.code("""
-    CREATE TABLE exchange_rates (
-        id SERIAL PRIMARY KEY,
-        created_at TIMESTAMPTZ DEFAULT NOW(),   -- Zeitstempel des Snapshots
-        sol_price_usd NUMERIC,                  -- WICHTIG: Der "Wasserstand" (z.B. 145.50)
-        usd_to_eur_rate NUMERIC,                -- Währungsumrechnung
-        native_currency_price_usd NUMERIC,      -- Redundant zu sol_price (für Mapping)
-        blockchain_id INTEGER DEFAULT 1,        -- ID der Chain (1 = Solana)
-        source VARCHAR(50)                      -- Herkunft (z.B. "Scout Workflow")
-    );
-    """, language="sql")
-    
-    st.subheader("💡 Bedeutung für KI-Training")
-    
-    st.markdown("""
-    Dieser Kontext ermöglicht der KI zu lernen:
-    
-    - **"Token steigt, während SOL stabil ist"** → **Bullish** (Echter Pump) ✅
-    - **"Token steigt, weil SOL um 5% steigt"** → **Neutral** (Marktbewegung) ⚠️
-    - **"Token ist stabil, während SOL crasht"** → **Stärke** (Relative Strength) 💪
-    """)
-    
-    st.info("""
-    💡 **Beispiel-Analyse**:
-    
-    **Szenario 1**: Token steigt um 20%, SOL steigt um 2%
-    - **Interpretation**: Token überperformed den Markt → **Starker Pump**
-    
-    **Szenario 2**: Token steigt um 20%, SOL steigt um 18%
-    - **Interpretation**: Token folgt nur dem Markt → **Kein echter Pump**
-    
-    **Szenario 3**: Token fällt um 5%, SOL fällt um 15%
-    - **Interpretation**: Token hält sich besser als der Markt → **Relative Stärke**
-    """)
-    
-    st.subheader("📊 Verwendung in KI-Modellen")
-    
-    st.markdown("""
-    Die `exchange_rates` Tabelle ermöglicht:
-    
-    1. **Normalisierung**: Token-Preise können relativ zum SOL-Preis analysiert werden
-    2. **Kontext**: Marktbewegungen können von Token-spezifischen Bewegungen unterschieden werden
-    3. **Timing**: Zu jedem Zeitpunkt ist der aktuelle "Wasserstand" bekannt
-    
-    **SQL-Beispiel für relative Performance**:
-    ```sql
-    SELECT 
-        cm.mint,
-        cm.timestamp,
-        cm.price_close,
-        er.sol_price_usd,
-        -- Relative Performance: Token vs. SOL
-        (cm.price_close / LAG(cm.price_close) OVER (PARTITION BY cm.mint ORDER BY cm.timestamp)) - 1 as token_change,
-        (er.sol_price_usd / LAG(er.sol_price_usd) OVER (ORDER BY er.created_at)) - 1 as sol_change
-    FROM coin_metrics cm
-    JOIN exchange_rates er ON DATE_TRUNC('minute', cm.timestamp) = DATE_TRUNC('minute', er.created_at)
-    WHERE cm.mint = 'DEIN_MINT_HIER'
-    ORDER BY cm.timestamp DESC;
-    ```
-    """)
-    
-    st.divider()
-    
-    st.header("📚 15. Technische Details")
+    st.header("📚 14. Technische Details")
     
     st.subheader("Datenquellen")
     
@@ -2772,7 +2600,6 @@ if sol_amount >= WHALE_THRESHOLD_SOL:  # Standard: 1.0 SOL
       - `coin_streams`: Tracking-Status
       - `coin_metrics`: Gespeicherte Metriken
       - `ref_coin_phases`: Phasen-Konfiguration
-      - `exchange_rates`: Marktstimmung (SOL-Preis, USD/EUR Kurs) - wird von n8n Workflow gefüllt
     """)
     
     st.subheader("Performance-Optimierungen")
