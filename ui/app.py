@@ -478,10 +478,51 @@ with tab1:
             if health.get('last_message_ago'):
                 st.write(f"- Letzte Nachricht: vor {health.get('last_message_ago')}s")
             
-            st.write("**Datenbank Status:**")
-            st.write(f"- Verbunden: {'✅' if health.get('db_connected') else '❌'}")
+            # Datenbank-Status (wie im Screenshot)
+            st.subheader("🗄️ Datenbank-Status")
+            db_connected = health.get('db_connected', False)
+            db_tables = health.get('db_tables', {})
+            
+            # Status-Indikatoren in Spalten
+            status_cols = st.columns(5)
+            
+            # 1. Verbunden
+            with status_cols[0]:
+                if db_connected:
+                    st.success("✅ Verbunden")
+                else:
+                    st.error("❌ Nicht verbunden")
+            
+            # 2. coin_metrics
+            with status_cols[1]:
+                if db_tables.get('coin_metrics_exists', False):
+                    st.success("✅ coin_metrics")
+                else:
+                    st.error("❌ coin_metrics")
+            
+            # 3. coin_streams
+            with status_cols[2]:
+                if db_tables.get('coin_streams_exists', False):
+                    st.success("✅ coin_streams")
+                else:
+                    st.error("❌ coin_streams")
+            
+            # 4. discovered_coins
+            with status_cols[3]:
+                if db_tables.get('discovered_coins_exists', False):
+                    st.success("✅ discovered_coins")
+                else:
+                    st.error("❌ discovered_coins")
+            
+            # 5. ref_coin_phases
+            with status_cols[4]:
+                if db_tables.get('ref_coin_phases_exists', False):
+                    st.success("✅ ref_coin_phases")
+                else:
+                    st.error("❌ ref_coin_phases")
+            
             if health.get('last_error'):
-                st.write(f"- Letzter Fehler: {health.get('last_error')}")
+                st.warning(f"⚠️ Letzter Fehler: {health.get('last_error')}")
         
         with col2:
             st.write("**Tracker-Statistiken:**")

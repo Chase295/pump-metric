@@ -152,7 +152,8 @@ async def health_check(request):
         db_table_check = {
             "coin_metrics_exists": False,
             "coin_streams_exists": False,
-            "discovered_coins_exists": False
+            "discovered_coins_exists": False,
+            "ref_coin_phases_exists": False
         }
         
         if db_status and _tracker_instance and _tracker_instance.pool:
@@ -187,6 +188,16 @@ async def health_check(request):
                         )
                     """)
                     db_table_check["discovered_coins_exists"] = discovered_coins_exists
+                    
+                    # Prüfe ref_coin_phases Tabelle
+                    ref_coin_phases_exists = await conn.fetchval("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables 
+                            WHERE table_schema = 'public' 
+                            AND table_name = 'ref_coin_phases'
+                        )
+                    """)
+                    db_table_check["ref_coin_phases_exists"] = ref_coin_phases_exists
             except Exception as e:
                 # Tabellen-Prüfung fehlgeschlagen - ignorieren
                 pass
