@@ -52,7 +52,7 @@ services:
       # Von extern erreichbar
       - "0.0.0.0:${UI_PORT:-8499}:8501"
     volumes:
-      - ./config:/app/config:ro
+      - ./config:/app/config:rw
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - pump-metric-network
