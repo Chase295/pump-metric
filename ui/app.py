@@ -489,13 +489,12 @@ with tab1:
 
 # Konfiguration Tab
 with tab2:
-    
     try:
-    config = load_config()
-except Exception as e:
-    # Falls load_config fehlschlägt (z.B. read-only FS), verwende Default-Config
-    print(f"⚠️ Fehler beim Laden der Config: {e}. Verwende Default-Config.", flush=True)
-    config = get_default_config()
+        config = load_config()
+    except Exception as e:
+        # Falls load_config fehlschlägt (z.B. read-only FS), verwende Default-Config
+        print(f"⚠️ Fehler beim Laden der Config: {e}. Verwende Default-Config.", flush=True)
+        config = get_default_config()
     
     st.info("💡 Änderungen werden in der Konfigurationsdatei gespeichert. Ein Service-Neustart ist erforderlich, damit die Änderungen wirksam werden.")
     
