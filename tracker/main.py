@@ -450,10 +450,6 @@ class Tracker:
                                 to_add = current_set - self.subscribed_mints
                                 if to_add:
                                     print(f"📡 {len(to_add)} Coins in coin_streams aktiviert - starte Tracking...", flush=True)
-                                    print(f"🔍 DEBUG: to_add Coins: {[m[:8] + '...' for m in list(to_add)[:5]]}", flush=True)
-                                    print(f"🔍 DEBUG: early_subscribed_mints count: {len(self.early_subscribed_mints)}", flush=True)
-                                    print(f"🔍 DEBUG: trade_buffer count: {len(self.trade_buffer)}", flush=True)
-                                    print(f"🔍 DEBUG: trade_buffer keys (first 5): {[k[:8] + '...' for k in list(self.trade_buffer.keys())[:5]]}", flush=True)
                                     
                                     # Prüfe ob Coins bereits über NewToken-Listener abonniert wurden
                                     to_subscribe_now = []
@@ -494,12 +490,11 @@ class Tracker:
                                         is_early_subscribed = mint in self.early_subscribed_mints
                                         buffer_size = len(self.trade_buffer.get(mint, []))
                                         
-                                        # DEBUG: Prüfe ob Coin im trade_buffer ist (auch mit Teilstring-Match)
+                                        # Prüfe ob Coin im trade_buffer ist (auch mit Teilstring-Match für ähnliche Adressen)
                                         buffer_keys_match = [k for k in self.trade_buffer.keys() if k[:8] == mint[:8]]
                                         
-                                        print(f"🔍 {mint[:8]}...: early_subscribed={is_early_subscribed}, has_buffer={has_buffer}, buffer_size={buffer_size}", flush=True)
-                                        if buffer_keys_match and not has_buffer:
-                                            print(f"⚠️  {mint[:8]}...: Coin nicht exakt im Buffer, aber ähnliche Keys gefunden: {[k[:12] + '...' for k in buffer_keys_match[:3]]}", flush=True)
+                                        if buffer_size > 0 or has_buffer:
+                                            print(f"🔍 {mint[:8]}...: early_subscribed={is_early_subscribed}, has_buffer={has_buffer}, buffer_size={buffer_size}", flush=True)
                                         
                                         # Prüfe auch ob ein ähnlicher Coin im Buffer ist (für den Fall dass Adressen leicht abweichen)
                                         buffer_match = None
@@ -684,8 +679,10 @@ class Tracker:
         # end_ts sollte jetzt sein, damit alle Trades bis zur Aktivierung verarbeitet werden
         end_ts = now_ts
         
-        print(f"🔍 {mint[:8]}...: Prüfe Buffer - created_ts={created_ts:.1f}, started_ts={started_ts:.1f}, now_ts={now_ts:.1f}, cutoff_ts={cutoff_ts:.1f}, end_ts={end_ts:.1f}", flush=True)
-        print(f"🔍 {mint[:8]}...: Buffer hat {len(self.trade_buffer[mint])} Trades", flush=True)
+        # Nur detailliertes Logging wenn Buffer vorhanden ist
+        if len(self.trade_buffer[mint]) > 0:
+            print(f"🔍 {mint[:8]}...: Prüfe Buffer - created_ts={created_ts:.1f}, started_ts={started_ts:.1f}, now_ts={now_ts:.1f}, cutoff_ts={cutoff_ts:.1f}, end_ts={end_ts:.1f}", flush=True)
+            print(f"🔍 {mint[:8]}...: Buffer hat {len(self.trade_buffer[mint])} Trades", flush=True)
         
         relevant_trades = []
         for trade_ts, trade_data in self.trade_buffer[mint]:
@@ -693,7 +690,8 @@ class Tracker:
             if cutoff_ts <= trade_ts <= end_ts:
                 relevant_trades.append((trade_ts, trade_data))
         
-        print(f"🔍 {mint[:8]}...: {len(relevant_trades)} relevante Trades gefunden", flush=True)
+        if len(relevant_trades) > 0:
+            print(f"🔍 {mint[:8]}...: {len(relevant_trades)} relevante Trades gefunden für rückwirkende Verarbeitung", flush=True)
         
         # Sortiere nach Timestamp (älteste zuerst) für chronologische Verarbeitung
         relevant_trades.sort(key=lambda x: x[0])

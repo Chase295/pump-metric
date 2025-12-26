@@ -1409,6 +1409,184 @@ with tab5:
     
     st.divider()
     
+    st.header("🛡️ 0. Lücken-Prävention: Universal Trade Buffer (180 Sekunden)")
+    
+    st.markdown("""
+    Um sicherzustellen, dass **keine Trades verloren gehen**, auch wenn ein Coin erst mit Verzögerung aktiviert wird, 
+    verwendet das System einen **Universal Trade Buffer** mit einer Dauer von **180 Sekunden (3 Minuten)**.
+    """)
+    
+    st.subheader("🔍 Problem: Verpasste Trades bei verzögerter Aktivierung")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **Ohne Buffer**:
+        ```
+        Zeitpunkt 0s:  Coin wird erstellt
+        Zeitpunkt 5s:  Erste Trades passieren
+        Zeitpunkt 10s: Weitere Trades passieren
+        Zeitpunkt 40s: Coin wird in coin_streams aktiviert
+        Zeitpunkt 40s: Tracking beginnt → Trades von 5s-40s sind VERLOREN ❌
+        ```
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Mit 180s Buffer**:
+        ```
+        Zeitpunkt 0s:  Coin wird erstellt
+        Zeitpunkt 5s:  Erste Trades → im Buffer gespeichert ✅
+        Zeitpunkt 10s: Weitere Trades → im Buffer gespeichert ✅
+        Zeitpunkt 40s: Coin wird aktiviert
+        Zeitpunkt 40s: Buffer wird rückwirkend verarbeitet ✅
+        Zeitpunkt 40s: Alle Trades von 0s-40s werden verarbeitet ✅
+        ```
+        """)
+    
+    st.subheader("🔧 Lösung: Zwei parallele WebSocket-Streams")
+    
+    st.markdown("""
+    Das System verwendet **zwei parallele WebSocket-Verbindungen**:
+    """)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        ### Stream 1: NewToken-Listener
+        - **Methode**: `subscribeNewToken`
+        - **Zweck**: Erkennt neue Coins **sofort** bei Erstellung
+        - **Reaktion**: 
+          - Coin wird **sofort** zum Trade-Stream abonniert
+          - Alle Trades werden in den 180s-Buffer gespeichert
+        
+        **Code**:
+        ```python
+        # NewToken-Listener erkennt neuen Coin
+        if data.get("txType") == "create":
+            mint = data["mint"]
+            # Sofort abonnieren
+            await subscribe_queue.put(mint)
+            self.early_subscribed_mints.add(mint)
+        ```
+        """)
+    
+    with col2:
+        st.markdown("""
+        ### Stream 2: Trade-Stream
+        - **Methode**: `subscribeTokenTrade`
+        - **Zweck**: Empfängt Trade-Events für abonnierte Coins
+        - **Funktion**:
+          - Empfängt alle Trades für abonnierte Coins
+          - Speichert **jeden Trade** im 180s-Buffer
+          - Verarbeitet Trades für aktivierte Coins sofort
+        
+        **Code**:
+        ```python
+        # Jeder Trade wird im Buffer gespeichert
+        self.add_trade_to_buffer(data)
+        
+        # Wenn Coin aktiv ist, wird Trade sofort verarbeitet
+        if data["mint"] in self.watchlist:
+            self.process_trade(data)
+        ```
+        """)
+    
+    st.subheader("💾 Universal Trade Buffer (180 Sekunden)")
+    
+    st.markdown("""
+    **Struktur**: `{mint: [(timestamp, trade_data), ...]}`
+    
+    **Eigenschaften**:
+    - **Dauer**: 180 Sekunden (3 Minuten) - konfigurierbar über `TRADE_BUFFER_SECONDS`
+    - **Größe**: Max. 5000 Trades pro Coin (verhindert Speicher-Überlauf)
+    - **Cleanup**: Alte Trades (> 180s) werden automatisch alle 10 Sekunden entfernt
+    - **Speicherung**: Alle empfangenen Trades werden mit Timestamp gespeichert
+    """)
+    
+    st.code("""
+    def add_trade_to_buffer(self, data):
+        mint = data.get("mint")
+        if not mint:
+            return
+        
+        if mint not in self.trade_buffer:
+            self.trade_buffer[mint] = []
+        
+        # Speichere Trade mit Timestamp
+        trade_entry = (time.time(), data)
+        self.trade_buffer[mint].append(trade_entry)
+        
+        # Begrenze Buffer-Größe (max 5000 Trades)
+        if len(self.trade_buffer[mint]) > 5000:
+            self.trade_buffer[mint] = self.trade_buffer[mint][-5000:]
+    """, language="python")
+    
+    st.subheader("🔄 Rückwirkende Verarbeitung bei Stream-Aktivierung")
+    
+    st.markdown("""
+    Wenn ein Coin in `coin_streams` aktiviert wird (`is_active = TRUE`), prüft das System den Buffer:
+    """)
+    
+    st.code("""
+    # Bei Stream-Aktivierung
+    if mint in self.early_subscribed_mints or mint in self.trade_buffer:
+        # Zeitfenster für rückwirkende Verarbeitung
+        created_at = coin.token_created_at  # Wann wurde Coin erstellt?
+        started_at = coin.started_at        # Wann wurde Tracking gestartet?
+        now_ts = time.time()
+        
+        # Finde alle relevanten Trades im Buffer
+        cutoff_ts = max(created_at.timestamp(), now_ts - TRADE_BUFFER_SECONDS)
+        end_ts = now_ts  # Alle Trades bis jetzt
+        
+        relevant_trades = []
+        for (trade_ts, trade_data) in self.trade_buffer[mint]:
+            if cutoff_ts <= trade_ts <= end_ts:
+                relevant_trades.append((trade_ts, trade_data))
+        
+        # Verarbeite Trades rückwirkend (chronologisch)
+        relevant_trades.sort(key=lambda x: x[0])  # Sortiere nach Timestamp
+        for trade_ts, trade_data in relevant_trades:
+            self.process_trade(trade_data)  # Fügt Trade zu Coin-Buffer hinzu
+        
+        # Metriken werden sofort berechnet und gespeichert
+    """, language="python")
+    
+    st.info("""
+    💡 **Wichtig**: 
+    - Der Universal Buffer speichert **alle Trades** für 180 Sekunden
+    - Bei Stream-Aktivierung werden **verpasste Trades rückwirkend verarbeitet**
+    - **Keine Trades gehen verloren**, auch bei Verzögerungen bis zu 180 Sekunden
+    - Die Buffer-Dauer kann über `TRADE_BUFFER_SECONDS` angepasst werden (Standard: 180s)
+    """)
+    
+    st.warning("""
+    ⚠️ **Grenzen**: 
+    - Trades die **vor** der Coin-Erstellung passieren, können nicht erfasst werden (unmöglich)
+    - Trades die **mehr als 180 Sekunden** vor der Aktivierung passieren, gehen verloren
+    - Bei sehr langen Verzögerungen (> 180s) können frühe Trades fehlen
+    """)
+    
+    st.subheader("📊 Buffer-Statistiken")
+    
+    st.markdown("""
+    Die Buffer-Statistiken werden im Health-Check-Endpoint bereitgestellt:
+    
+    - `buffer_stats.total_trades_in_buffer`: Gesamtanzahl Trades im Buffer
+    - `buffer_stats.coins_with_buffer`: Anzahl Coins mit Trades im Buffer
+    - `buffer_stats.buffer_details`: Top 10 Coins mit meisten Trades im Buffer
+    
+    **Prometheus-Metriken**:
+    - `tracker_trade_buffer_size`: Aktuelle Buffer-Größe (Anzahl Coins)
+    - `tracker_buffer_trades_total`: Gesamtanzahl Trades die im Buffer gespeichert wurden
+    - `tracker_trades_from_buffer_total`: Anzahl Trades die aus dem Buffer verarbeitet wurden
+    """)
+    
+    st.divider()
+    
     st.header("📡 1. Datenquelle (für Tracking)")
     
     col1, col2 = st.columns(2)
@@ -1455,6 +1633,83 @@ with tab5:
     st.header("💾 3. Buffer-System & Daten-Sammlung")
     
     st.markdown("""
+    Das System verwendet ein **zweistufiges Buffer-System** um sicherzustellen, dass **keine Trades verloren gehen**, 
+    auch wenn ein Coin erst mit Verzögerung aktiviert wird.
+    """)
+    
+    st.subheader("🔄 Universal Trade Buffer (180 Sekunden)")
+    
+    st.markdown("""
+    **Problem**: Wenn ein Coin erst nach seiner Erstellung in `coin_streams` aktiviert wird, gehen die ersten Trades verloren.
+    
+    **Lösung**: Ein **Universal Trade Buffer** speichert **alle empfangenen Trades für 180 Sekunden (3 Minuten)** im Speicher.
+    """)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        ### NewToken-Listener Stream
+        - **Zweiter WebSocket-Stream** parallel zum Trade-Stream
+        - **Methode**: `subscribeNewToken`
+        - **Funktion**: Erkennt neue Coins **sofort** bei Erstellung
+        - **Reaktion**: Abonniert den Coin **sofort** für Trade-Events
+        
+        **Ablauf**:
+        1. Neuer Coin wird erkannt über `subscribeNewToken`
+        2. Coin wird **sofort** zum Trade-Stream abonniert
+        3. Alle Trades werden in den 180s-Buffer gespeichert
+        4. Wenn Coin in `coin_streams` aktiviert wird → Buffer wird rückwirkend verarbeitet
+        """)
+    
+    with col2:
+        st.markdown("""
+        ### Trade-Buffer (Ring-Buffer)
+        - **Dauer**: 180 Sekunden (3 Minuten)
+        - **Struktur**: `{mint: [(timestamp, trade_data), ...]}`
+        - **Größe**: Max. 5000 Trades pro Coin
+        - **Cleanup**: Alte Trades (> 180s) werden automatisch entfernt
+        
+        **Speicherung**:
+        - Jeder empfangene Trade wird mit Timestamp gespeichert
+        - Buffer wird alle 10 Sekunden aufgeräumt
+        - Nur Trades der letzten 180 Sekunden werden behalten
+        """)
+    
+    st.subheader("🔄 Rückwirkende Verarbeitung")
+    
+    st.markdown("""
+    Wenn ein Coin in `coin_streams` aktiviert wird, prüft das System den Buffer:
+    """)
+    
+    st.code("""
+    # Zeitfenster für rückwirkende Verarbeitung
+    created_at = coin.token_created_at  # Wann wurde der Coin erstellt?
+    started_at = coin.started_at        # Wann wurde das Tracking gestartet?
+    
+    # Finde alle Trades im Buffer zwischen created_at und started_at
+    relevant_trades = []
+    for (trade_timestamp, trade_data) in trade_buffer[mint]:
+        if created_at <= trade_timestamp <= started_at:
+            relevant_trades.append(trade_data)
+    
+    # Verarbeite diese Trades rückwirkend
+    for trade in relevant_trades:
+        process_trade(trade)  # Fügt Trade zu Coin-Buffer hinzu
+    """, language="python")
+    
+    st.info("""
+    💡 **Wichtig**: 
+    - Der Universal Buffer speichert **alle Trades** für 180 Sekunden
+    - Bei Stream-Aktivierung werden **verpasste Trades rückwirkend verarbeitet**
+    - **Keine Trades gehen verloren**, auch bei Verzögerungen bis zu 180 Sekunden
+    """)
+    
+    st.subheader("📊 Coin-spezifischer Buffer (für Metriken)")
+    
+    st.markdown("""
+    **Zusätzlich** zum Universal Buffer hat jeder Coin einen **eigenen Buffer** für Metriken-Sammlung:
+    
     Für jeden Coin wird ein **Buffer** erstellt, der alle Trades innerhalb eines Zeitintervalls sammelt.
     Das Intervall hängt von der **Phase** des Coins ab (siehe Phasen-Management).
     """)
