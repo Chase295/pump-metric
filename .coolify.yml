@@ -22,7 +22,7 @@ services:
       - WS_CONNECTION_TIMEOUT=${WS_CONNECTION_TIMEOUT:-30}
       - HEALTH_PORT=${HEALTH_PORT:-8000}
     ports:
-      - "8009:8000"
+      - "8011:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -39,7 +39,7 @@ services:
       - TRACKER_SERVICE=tracker
       - TRACKER_PORT=8000
     ports:
-      - "8499:8501"
+      - "8501:8501"
     depends_on:
       - tracker
     restart: unless-stopped

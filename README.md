@@ -36,8 +36,8 @@ Automatisches Tracking-System für Pump.fun Coins mit detaillierten Metriken und
 3. **Deploy**: Coolify erstellt automatisch beide Services (tracker + ui)
 
 4. **Zugriff**:
-   - Tracker API: `http://your-domain:8009/health`
-   - UI: `http://your-domain:8499`
+   - Tracker API: `http://your-domain:8011/health`
+   - UI: `http://your-domain:8501`
 
 ### Option 2: Lokale Installation mit Docker Compose
 
@@ -115,12 +115,13 @@ CREATE TABLE coin_metrics (
 
 ## 🔌 API Endpoints
 
-### Tracker Service (Port 8000)
+### Tracker Service (Port 8011 extern, 8000 intern)
 
 - `GET /health` - Health-Check mit detaillierten Status-Informationen
 - `GET /metrics` - Prometheus-Metriken
+- `POST /reload-config` - Konfiguration neu laden (ohne Neustart)
 
-### UI Service (Port 8499)
+### UI Service (Port 8501)
 
 - Streamlit Web-Interface mit:
   - Dashboard mit Live-Metriken

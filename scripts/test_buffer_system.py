@@ -9,7 +9,7 @@ import time
 import json
 from datetime import datetime, timedelta
 
-TRACKER_URL = "http://localhost:8009"
+TRACKER_URL = "http://localhost:8011"
 
 def get_health():
     """Holt Health-Status vom Tracker"""

@@ -240,7 +240,7 @@ Suche nach folgenden Log-Meldungen:
 ### 2. **Health-Check Endpoint prüfen**
 
 ```bash
-curl http://localhost:8009/health | jq '.buffer_stats'
+curl http://localhost:8011/health | jq '.buffer_stats'
 ```
 
 **Erwartete Ausgabe:**
@@ -259,7 +259,7 @@ curl http://localhost:8009/health | jq '.buffer_stats'
 ### 3. **Prometheus-Metriken prüfen**
 
 ```bash
-curl http://localhost:8009/metrics | grep buffer
+curl http://localhost:8011/metrics | grep buffer
 ```
 
 **Wichtige Metriken:**

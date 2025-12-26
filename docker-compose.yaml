@@ -22,10 +22,10 @@ services:
       - WHALE_THRESHOLD_SOL=${WHALE_THRESHOLD_SOL:-1.0}
     ports:
       # API & Metrics Port (Health-Check + Prometheus Metrics)
-      # Externer Port: ${TRACKER_PORT:-8009} → Interner Port: 8000
+      # Externer Port: ${TRACKER_PORT:-8011} → Interner Port: 8000
       # Endpoints: http://<SERVER_IP>:${TRACKER_PORT}/health und http://<SERVER_IP>:${TRACKER_PORT}/metrics
-      # Von extern erreichbar auf Port 8009
-      - "0.0.0.0:${TRACKER_PORT:-8009}:8000"
+      # Von extern erreichbar auf Port 8011
+      - "0.0.0.0:${TRACKER_PORT:-8011}:8000"
     volumes:
       - config_data:/app/config:rw
     networks:
@@ -48,10 +48,10 @@ services:
       - TRACKER_PORT=8000
     ports:
       # Streamlit UI Port
-      # Externer Port: ${UI_PORT:-8499} → Interner Port: 8501
+      # Externer Port: ${UI_PORT:-8501} → Interner Port: 8501
       # URL: http://<SERVER_IP>:${UI_PORT}
-      # Von extern erreichbar
-      - "0.0.0.0:${UI_PORT:-8499}:8501"
+      # Von extern erreichbar auf Port 8501
+      - "0.0.0.0:${UI_PORT:-8501}:8501"
     volumes:
       - config_data:/app/config:rw
       - /var/run/docker.sock:/var/run/docker.sock:ro
