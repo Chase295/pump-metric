@@ -658,8 +658,23 @@ with tab2:
             if save_config(default_config):
                 st.session_state.config_saved = True
                 st.success("✅ Konfiguration auf Standard zurückgesetzt!")
-                st.warning("⚠️ Bitte Service neu starten, damit die Änderungen wirksam werden.")
+                st.warning("⚠️ Bitte Service neu starten oder 'Konfiguration neu laden' Button unten verwenden!")
                 st.rerun()
+    
+    # Reload-Button AUSSERHALB des Forms (immer sichtbar)
+    st.divider()
+    st.subheader("🔄 Konfiguration neu laden")
+    st.caption("Lädt die gespeicherte Konfiguration im Tracker-Service neu (ohne Neustart)")
+    if st.button("🔄 Konfiguration neu laden", type="primary", key="reload_config_button"):
+        with st.spinner("Konfiguration wird neu geladen..."):
+            success, message = reload_tracker_config()
+            if success:
+                st.success(f"✅ {message}")
+                st.info("💡 Die neue Konfiguration ist jetzt aktiv! Kein Neustart nötig.")
+                st.balloons()
+            else:
+                st.error(f"❌ {message}")
+                st.info("💡 Falls der Reload fehlschlägt, starte den Tracker-Service manuell neu.")
     
     # Neustart-Button außerhalb des Forms (wenn Konfiguration gespeichert wurde)
     if st.session_state.get("config_saved", False):
