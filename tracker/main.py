@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from collections import Counter
 from aiohttp import web
 from prometheus_client import Counter as PromCounter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from db_migration import check_and_create_schema
 
 # --- KONFIGURATION ---
 DB_DSN = os.getenv("DB_DSN", "postgresql://postgres:9HVxi6hN6j7xpmqUx84o@100.118.155.75:5432/crypto")
