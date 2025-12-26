@@ -26,6 +26,7 @@ WS_PING_TIMEOUT = int(os.getenv("WS_PING_TIMEOUT", "10"))
 WS_CONNECTION_TIMEOUT = int(os.getenv("WS_CONNECTION_TIMEOUT", "30"))
 HEALTH_PORT = int(os.getenv("HEALTH_PORT", "8000"))
 TRADE_BUFFER_SECONDS = int(os.getenv("TRADE_BUFFER_SECONDS", "180"))  # 180 Sekunden (3 Minuten) Buffer für verpasste Trades
+WHALE_THRESHOLD_SOL = float(os.getenv("WHALE_THRESHOLD_SOL", "1.0"))  # Schwellenwert für Whale-Trades (Standard: 1.0 SOL)
 
 # ZEITZONEN
 GERMAN_TZ = ZoneInfo("Europe/Berlin")
@@ -283,7 +284,12 @@ class Tracker:
             "open": None, "high": -1, "low": float("inf"), "close": 0,
             "vol": 0, "vol_buy": 0, "vol_sell": 0, "buys": 0, "sells": 0,
             "micro_trades": 0, "max_buy": 0, "max_sell": 0,
-            "wallets": set(), "v_sol": 0, "mcap": 0
+            "wallets": set(), "v_sol": 0, "mcap": 0,
+            # NEU: Whale-Tracking
+            "whale_buy_vol": 0,
+            "whale_sell_vol": 0,
+            "whale_buys": 0,
+            "whale_sells": 0
         }
 
     async def run_new_token_listener(self, subscribe_queue):
@@ -733,14 +739,60 @@ class Tracker:
             buf["buys"] += 1
             buf["vol_buy"] += sol
             buf["max_buy"] = max(buf["max_buy"], sol)
+            # NEU: Whale-Tracking
+            if sol >= WHALE_THRESHOLD_SOL:
+                buf["whale_buy_vol"] += sol
+                buf["whale_buys"] += 1
         else:
             buf["sells"] += 1
             buf["vol_sell"] += sol
             buf["max_sell"] = max(buf["max_sell"], sol)
+            # NEU: Whale-Tracking
+            if sol >= WHALE_THRESHOLD_SOL:
+                buf["whale_sell_vol"] += sol
+                buf["whale_sells"] += 1
         if sol < 0.01: buf["micro_trades"] += 1
         buf["wallets"].add(data["traderPublicKey"])
         buf["v_sol"] = float(data["vSolInBondingCurve"])
         buf["mcap"] = price * 1_000_000_000
+
+    def calculate_advanced_metrics(self, buf):
+        """
+        Berechnet erweiterte Metriken aus dem Buffer
+        Alle Werte basieren auf echten Trade-Daten (keine erfundenen Zahlen)
+        """
+        # 1. Netto-Volumen (Delta): buy_volume - sell_volume
+        net_volume = buf["vol_buy"] - buf["vol_sell"]
+        
+        # 2. Volatilität: ((high - low) / open) * 100
+        if buf["open"] and buf["open"] > 0:
+            price_range = buf["high"] - buf["low"]
+            volatility = (price_range / buf["open"]) * 100
+        else:
+            volatility = 0.0
+        
+        # 3. Durchschnittliche Trade-Größe: volume / (num_buys + num_sells)
+        total_trades = buf["buys"] + buf["sells"]
+        if total_trades > 0:
+            avg_trade_size = buf["vol"] / total_trades
+        else:
+            avg_trade_size = 0.0
+        
+        # 4. Whale-Metriken (bereits im Buffer gesammelt)
+        whale_buy_vol = buf["whale_buy_vol"]
+        whale_sell_vol = buf["whale_sell_vol"]
+        num_whale_buys = buf["whale_buys"]
+        num_whale_sells = buf["whale_sells"]
+        
+        return {
+            "net_volume_sol": net_volume,
+            "volatility_pct": volatility,
+            "avg_trade_size_sol": avg_trade_size,
+            "whale_buy_volume_sol": whale_buy_vol,
+            "whale_sell_volume_sol": whale_sell_vol,
+            "num_whale_buys": num_whale_buys,
+            "num_whale_sells": num_whale_sells
+        }
 
     async def check_lifecycle_and_flush(self, now_ts):
         batch_data = []
@@ -778,13 +830,25 @@ class Tracker:
             if now_ts >= entry["next_flush"]:
                 if buf["vol"] > 0:
                     is_koth = buf["mcap"] > 30000
+                    
+                    # NEU: Erweiterte Metriken berechnen
+                    advanced_metrics = self.calculate_advanced_metrics(buf)
+                    
                     batch_data.append((
                         mint, now_berlin, entry["meta"]["phase_id"],
                         buf["open"], buf["high"], buf["low"], buf["close"], buf["mcap"],
                         current_bonding_pct, buf["v_sol"], is_koth,
                         buf["vol"], buf["vol_buy"], buf["vol_sell"],
                         buf["buys"], buf["sells"], len(buf["wallets"]), buf["micro_trades"],
-                        0, buf["max_buy"], buf["max_sell"]
+                        0, buf["max_buy"], buf["max_sell"],
+                        # NEU: Erweiterte Metriken
+                        advanced_metrics["net_volume_sol"],
+                        advanced_metrics["volatility_pct"],
+                        advanced_metrics["avg_trade_size_sol"],
+                        advanced_metrics["whale_buy_volume_sol"],
+                        advanced_metrics["whale_sell_volume_sol"],
+                        advanced_metrics["num_whale_buys"],
+                        advanced_metrics["num_whale_sells"]
                     ))
                     phases_in_batch.append(entry["meta"]["phase_id"])
                 entry["buffer"] = self.get_empty_buffer()
@@ -798,8 +862,12 @@ class Tracker:
                     bonding_curve_pct, virtual_sol_reserves, is_koth,
                     volume_sol, buy_volume_sol, sell_volume_sol,
                     num_buys, num_sells, unique_wallets, num_micro_trades,
-                    dev_sold_amount, max_single_buy_sol, max_single_sell_sol
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+                    dev_sold_amount, max_single_buy_sol, max_single_sell_sol,
+                    -- NEU: Erweiterte Metriken
+                    net_volume_sol, volatility_pct, avg_trade_size_sol,
+                    whale_buy_volume_sol, whale_sell_volume_sol,
+                    num_whale_buys, num_whale_sells
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
             """
             try:
                 with flush_duration.time():

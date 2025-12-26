@@ -19,6 +19,7 @@ services:
       - WS_PING_TIMEOUT=${WS_PING_TIMEOUT:-10}
       - WS_CONNECTION_TIMEOUT=${WS_CONNECTION_TIMEOUT:-30}
       - HEALTH_PORT=${HEALTH_PORT:-8000}
+      - WHALE_THRESHOLD_SOL=${WHALE_THRESHOLD_SOL:-1.0}
     ports:
       # API & Metrics Port (Health-Check + Prometheus Metrics)
       # Externer Port: ${TRACKER_PORT:-8009} → Interner Port: 8000

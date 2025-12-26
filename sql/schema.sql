@@ -33,7 +33,16 @@ CREATE TABLE coin_metrics (
     -- 5. WHALE WATCHING
     dev_sold_amount NUMERIC DEFAULT 0,
     max_single_buy_sol NUMERIC DEFAULT 0,
-    max_single_sell_sol NUMERIC DEFAULT 0
+    max_single_sell_sol NUMERIC DEFAULT 0,
+    
+    -- 6. ERWEITERTE METRIKEN (Whale & Volatilität)
+    net_volume_sol NUMERIC(24, 9) DEFAULT 0,           -- Delta: buy_vol - sell_vol
+    volatility_pct NUMERIC(10, 4) DEFAULT 0,           -- ((high - low) / open) * 100
+    avg_trade_size_sol NUMERIC(24, 9) DEFAULT 0,      -- volume / (num_buys + num_sells)
+    whale_buy_volume_sol NUMERIC(24, 9) DEFAULT 0,    -- Volumen von Trades >= 1 SOL (Buy)
+    whale_sell_volume_sol NUMERIC(24, 9) DEFAULT 0,    -- Volumen von Trades >= 1 SOL (Sell)
+    num_whale_buys INTEGER DEFAULT 0,                  -- Anzahl Whale-Buys
+    num_whale_sells INTEGER DEFAULT 0                  -- Anzahl Whale-Sells
 );
 
 CREATE INDEX idx_metrics_mint_time ON coin_metrics(mint, timestamp);

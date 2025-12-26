@@ -71,7 +71,15 @@ async def _check_schema(conn):
                     num_micro_trades INT,
                     dev_sold_amount NUMERIC DEFAULT 0,
                     max_single_buy_sol NUMERIC DEFAULT 0,
-                    max_single_sell_sol NUMERIC DEFAULT 0
+                    max_single_sell_sol NUMERIC DEFAULT 0,
+                    -- NEU: Erweiterte Metriken
+                    net_volume_sol NUMERIC(24, 9) DEFAULT 0,
+                    volatility_pct NUMERIC(10, 4) DEFAULT 0,
+                    avg_trade_size_sol NUMERIC(24, 9) DEFAULT 0,
+                    whale_buy_volume_sol NUMERIC(24, 9) DEFAULT 0,
+                    whale_sell_volume_sol NUMERIC(24, 9) DEFAULT 0,
+                    num_whale_buys INTEGER DEFAULT 0,
+                    num_whale_sells INTEGER DEFAULT 0
                 );
             """)
             await conn.execute("""
@@ -91,7 +99,11 @@ async def _check_schema(conn):
                 'price_low', 'price_close', 'market_cap_close', 'bonding_curve_pct',
                 'virtual_sol_reserves', 'is_koth', 'volume_sol', 'buy_volume_sol',
                 'sell_volume_sol', 'num_buys', 'num_sells', 'unique_wallets',
-                'num_micro_trades', 'dev_sold_amount', 'max_single_buy_sol', 'max_single_sell_sol'
+                'num_micro_trades', 'dev_sold_amount', 'max_single_buy_sol', 'max_single_sell_sol',
+                # NEU: Erweiterte Metriken
+                'net_volume_sol', 'volatility_pct', 'avg_trade_size_sol',
+                'whale_buy_volume_sol', 'whale_sell_volume_sol',
+                'num_whale_buys', 'num_whale_sells'
             }
             
             missing_columns = required_columns - existing_columns
@@ -101,11 +113,14 @@ async def _check_schema(conn):
                 for col in missing_columns:
                     if col == 'id':
                         continue  # Primary Key wird nicht nachträglich hinzugefügt
-                    elif col in ['dev_sold_amount', 'max_single_buy_sol', 'max_single_sell_sol']:
+                    elif col in ['dev_sold_amount', 'max_single_buy_sol', 'max_single_sell_sol', 
+                                  'net_volume_sol', 'volatility_pct', 'avg_trade_size_sol',
+                                  'whale_buy_volume_sol', 'whale_sell_volume_sol']:
                         await conn.execute(f"ALTER TABLE coin_metrics ADD COLUMN IF NOT EXISTS {col} NUMERIC DEFAULT 0;")
                     elif col == 'is_koth':
                         await conn.execute(f"ALTER TABLE coin_metrics ADD COLUMN IF NOT EXISTS {col} BOOLEAN DEFAULT FALSE;")
-                    elif col in ['num_buys', 'num_sells', 'unique_wallets', 'num_micro_trades', 'phase_id_at_time']:
+                    elif col in ['num_buys', 'num_sells', 'unique_wallets', 'num_micro_trades', 'phase_id_at_time',
+                                  'num_whale_buys', 'num_whale_sells']:
                         await conn.execute(f"ALTER TABLE coin_metrics ADD COLUMN IF NOT EXISTS {col} INT;")
                     elif col == 'timestamp':
                         await conn.execute(f"ALTER TABLE coin_metrics ADD COLUMN IF NOT EXISTS {col} TIMESTAMP WITH TIME ZONE DEFAULT NOW();")
