@@ -1,5 +1,6 @@
 # Coolify Konfiguration für pump-metric
-# Coolify erkennt automatisch docker-compose.yml und verwendet diese Services
+# Coolify erkennt automatisch docker-compose.yaml und verwendet diese Services
+# Environment Variables werden über die Coolify Web-UI gesetzt
 
 services:
   tracker:
