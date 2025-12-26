@@ -68,14 +68,23 @@ scrape_configs:
 1. Gehe zu **Configuration** → **Data Sources**
 2. Füge **Prometheus** hinzu (falls noch nicht vorhanden)
 3. URL: `http://DEINE_PROMETHEUS_IP:9090`
-4. Speichere und teste die Verbindung
+4. **WICHTIG**: Name muss **"Prometheus"** sein (oder ändere die Variable im Dashboard)
+5. Speichere und teste die Verbindung
 
-### Schritt 4: Dashboard anpassen
+### Schritt 4: Data Source Variable konfigurieren
 
 Nach dem Import:
-1. Klicke auf das Zahnrad-Symbol (⚙️) oben rechts
-2. Gehe zu **Variables** (falls nötig)
-3. Stelle sicher, dass `${DS_PROMETHEUS}` auf deine Prometheus Data Source zeigt
+1. Klicke auf das Zahnrad-Symbol (⚙️) oben rechts im Dashboard
+2. Gehe zu **Variables** → **DS_PROMETHEUS**
+3. Stelle sicher, dass **"Prometheus"** ausgewählt ist
+4. Falls deine Data Source anders heißt:
+   - Ändere den Namen in der Variable
+   - Oder benenne deine Prometheus Data Source in "Prometheus" um
+
+**Alternative**: Falls die Variable nicht funktioniert:
+1. Öffne jedes Panel im Edit-Modus
+2. Wähle manuell deine Prometheus Data Source aus
+3. Speichere das Dashboard
 
 ## 📈 Verwendung
 
