@@ -1,58 +1,72 @@
-# SQL Skripte für Pump Metric
+# SQL Schemas für Pump Metric
 
-## ensure_streams.sql
+Dieser Ordner enthält alle SQL-Schemas und Migrationen für das Pump Metric System.
 
-Dieses Skript stellt sicher, dass **keine Lücken** zwischen `discovered_coins` und `coin_streams` entstehen.
+## 📋 Dateien
 
-### Funktionen:
+### `schema.sql`
+**Hauptschema** - Vereinfachte Version für schnelle Referenz. Enthält die `coin_metrics` Tabelle mit allen Spalten und Indizes.
 
-1. **`ensure_coin_stream()`** - Trigger-Funktion
-   - Wird automatisch bei jedem INSERT in `discovered_coins` ausgelöst
-   - Erstellt sofort einen Eintrag in `coin_streams`
-   - Verhindert Lücken zu 100%
+**Verwendung**: Für schnelle Übersicht und als Basis-Schema.
 
-2. **`repair_missing_streams()`** - Reparatur-Funktion
-   - Findet alle Coins in `discovered_coins` ohne Stream
-   - Erstellt fehlende Streams nachträglich
-   - Kann manuell aufgerufen werden: `SELECT repair_missing_streams()`
+### `coin_metrics_complete.sql`
+**Vollständiges Schema** - Detaillierte Version mit:
+- Vollständigen Kommentaren für jede Spalte
+- Detaillierten Beschreibungen
+- Beispiel-SQL-Abfragen
+- Indizes für Performance
 
-3. **`check_stream_gaps()`** - Monitoring-Funktion
-   - Prüft auf Lücken zwischen den Tabellen
-   - Gibt Report zurück mit Anzahl und Details
-   - Kann regelmäßig aufgerufen werden: `SELECT * FROM check_stream_gaps()`
+**Verwendung**: Für Dokumentation, Entwicklung und als Referenz für alle verfügbaren Metriken.
 
-### Installation:
+### `ensure_streams.sql`
+**Hilfsfunktion** - Stellt sicher, dass `coin_streams` Einträge für alle aktiven Coins existieren.
+
+**Verwendung**: Wird vom Tracker automatisch verwendet.
+
+## 🗑️ Veraltete Dateien (können gelöscht werden)
+
+Die folgenden Migrations-Dateien sind nicht mehr nötig, da alle Spalten jetzt im Hauptschema enthalten sind:
+- ~~`add_advanced_metrics.sql`~~ - Enthalten in `schema.sql` und `coin_metrics_complete.sql`
+- ~~`add_ratios.sql`~~ - Enthalten in `schema.sql` und `coin_metrics_complete.sql`
+
+## 📊 coin_metrics Tabelle
+
+Die `coin_metrics` Tabelle speichert alle Metriken für jeden Coin in jedem Intervall.
+
+### Kategorien
+
+1. **Identifikation & Zeitpunkt**: `id`, `mint`, `timestamp`, `phase_id_at_time`
+2. **Preis & Bewertung**: OHLC Preise, Market Cap
+3. **Pump.fun Mechanik**: Bonding Curve %, Virtual SOL, KOTH Status
+4. **Volumen & Fluss**: Gesamt-, Buy-, Sell-Volumen, Netto-Volumen
+5. **Order-Struktur**: Anzahl Buys/Sells, Unique Wallets, Micro Trades
+6. **Whale Watching**: Whale-Volumen, Anzahl Whale-Trades, Max Trades
+7. **Dev-Tracking**: Verkauftes Volumen vom Creator (Rug-Pull-Erkennung)
+8. **Erweiterte Metriken**: Volatilität, Durchschnittliche Trade-Größe
+9. **Ratio-Metriken**: Buy-Pressure, Unique-Signer-Ratio
+
+### Indizes
+
+- `idx_metrics_mint_time`: Schnelle Suche nach Coin und Zeitpunkt
+- `idx_metrics_timestamp`: Zeitbereichs-Abfragen
+- `idx_metrics_phase`: Phase-basierte Abfragen
+- `idx_metrics_koth`: KOTH-Coins
+
+## 🚀 Verwendung
+
+### Neue Installation
 
 ```sql
--- Führe das Skript aus:
-\i ensure_streams.sql
-
--- Oder direkt in der Datenbank:
-psql -d crypto -f ensure_streams.sql
+-- Verwende das vollständige Schema
+\i sql/coin_metrics_complete.sql
 ```
 
-### Verwendung:
+### Bestehende Installation
 
-**Automatisch:**
-- Der Trigger läuft automatisch bei jedem neuen Coin
-- Keine manuelle Aktion erforderlich
+Das System erkennt automatisch fehlende Spalten und fügt sie hinzu (siehe `tracker/db_migration.py`).
 
-**Manuell reparieren:**
-```sql
-SELECT repair_missing_streams();
-```
+## 📖 Weitere Informationen
 
-**Lücken prüfen:**
-```sql
-SELECT * FROM check_stream_gaps();
-```
-
-### Sicherheit:
-
-- ✅ **ON CONFLICT DO NOTHING** verhindert Fehler bei Duplikaten
-- ✅ **Trigger läuft atomar** - keine Lücken möglich
-- ✅ **Automatische Reparatur** im Tracker (alle 60s)
-- ✅ **Monitoring** erkennt Lücken sofort
-
-
-
+- **UI Info-Seite**: Detaillierte Erklärungen aller Metriken
+- **Tracker Code**: `tracker/main.py` - Berechnungslogik
+- **DB Migration**: `tracker/db_migration.py` - Automatische Schema-Updates
