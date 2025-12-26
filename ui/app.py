@@ -156,31 +156,6 @@ HEALTH_PORT={config.get('HEALTH_PORT', 8000)}
     except (OSError, PermissionError) as e:
         # .env Datei kann nicht geschrieben werden - ignorieren (optional)
         pass  # Optional - nicht kritisch
-
-# Docker Compose Ports
-TRACKER_PORT=8000
-UI_PORT=8501
-"""
-    
-    # Speichere .env Datei
-    env_paths = [
-        "/app/.env",  # Gemountete .env Datei
-        "/app/../.env",  # Projekt-Root (wenn gemountet)
-        "/app/config/.env",  # Fallback
-    ]
-    
-    saved_env = False
-    for env_path in env_paths:
-        try:
-            env_dir = os.path.dirname(env_path)
-            if env_dir and env_dir != "/app":
-                os.makedirs(env_dir, exist_ok=True)
-            with open(env_path, 'w') as f:
-                f.write(env_content)
-            saved_env = True
-            break
-        except Exception as e:
-            continue
     
     return True  # YAML wurde immer gespeichert
 
