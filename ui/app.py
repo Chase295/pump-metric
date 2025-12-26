@@ -59,8 +59,12 @@ def load_config():
     # Wenn keine Config-Datei gefunden wurde, erstelle .env mit Default-Werten
     if not env_file_found and not config:
         default_config = get_default_config()
-        # Erstelle .env Datei mit Default-Werten
-        save_config(default_config)
+        # Versuche Config zu speichern, aber fahre fort auch wenn es fehlschlägt (z.B. read-only FS)
+        try:
+            save_config(default_config)
+        except (OSError, PermissionError) as e:
+            # Wenn das Dateisystem read-only ist, verwende einfach die Default-Config
+            print(f"⚠️ Konnte Config nicht speichern (read-only?): {e}", flush=True)
         return default_config
     
     # Wenn Config aus .env geladen wurde, aber leer ist, verwende Defaults
@@ -71,11 +75,19 @@ def load_config():
 
 def save_config(config):
     """Speichert Konfiguration in YAML-Datei UND .env Datei"""
-    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    try:
+        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+    except (OSError, PermissionError):
+        # Verzeichnis kann nicht erstellt werden (read-only)
+        raise
     
     # Speichere YAML (für UI)
-    with open(CONFIG_FILE, 'w') as f:
-        yaml.dump(config, f, default_flow_style=False)
+    try:
+        with open(CONFIG_FILE, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+    except (OSError, PermissionError) as e:
+        # Dateisystem ist read-only - wirf Exception weiter
+        raise OSError(f"Config-Datei kann nicht geschrieben werden (read-only): {e}")
     
     # Speichere .env (für Docker Compose / Tracker Service)
     env_content = f"""# ============================================================================
@@ -478,7 +490,12 @@ with tab1:
 # Konfiguration Tab
 with tab2:
     
+    try:
     config = load_config()
+except Exception as e:
+    # Falls load_config fehlschlägt (z.B. read-only FS), verwende Default-Config
+    print(f"⚠️ Fehler beim Laden der Config: {e}. Verwende Default-Config.", flush=True)
+    config = get_default_config()
     
     st.info("💡 Änderungen werden in der Konfigurationsdatei gespeichert. Ein Service-Neustart ist erforderlich, damit die Änderungen wirksam werden.")
     
