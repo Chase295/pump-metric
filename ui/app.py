@@ -2273,28 +2273,287 @@ if sol_amount >= WHALE_THRESHOLD_SOL:  # Standard: 1.0 SOL
     
     st.markdown("""
     Wichtige Konfigurationsparameter (siehe Konfiguration-Tab):
+    """)
     
-    - **DB_REFRESH_INTERVAL**: Wie oft nach neuen Coins gesucht wird (Standard: 10s)
-    - **SOL_RESERVES_FULL**: SOL für 100% Bonding Curve (Standard: 85.0)
-    - **AGE_CALCULATION_OFFSET_MIN**: Offset für Altersberechnung (Standard: 60 Min)
-    - **WS_***: WebSocket-Einstellungen (Retry, Ping, Timeout)
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **Datenbank**:
+        - `DB_REFRESH_INTERVAL`: Wie oft nach neuen Coins gesucht wird (Standard: 10s)
+        - `DB_RETRY_DELAY`: Wartezeit bei DB-Fehlern (Standard: 5s)
+        - `DB_DSN`: PostgreSQL Connection String
+        
+        **Bonding Curve**:
+        - `SOL_RESERVES_FULL`: SOL für 100% Bonding Curve (Standard: 85.0)
+        - `AGE_CALCULATION_OFFSET_MIN`: Offset für Altersberechnung (Standard: 60 Min)
+        """)
+    
+    with col2:
+        st.markdown("""
+        **WebSocket**:
+        - `WS_URI`: WebSocket-Endpunkt (Standard: wss://pumpportal.fun/api/data)
+        - `WS_RETRY_DELAY`: Wartezeit bei Reconnect (Standard: 3s)
+        - `WS_PING_INTERVAL`: Ping-Intervall (Standard: 20s)
+        - `WS_CONNECTION_TIMEOUT`: Timeout für Verbindung (Standard: 30s)
+        
+        **Buffer & Tracking**:
+        - `TRADE_BUFFER_SECONDS`: Buffer-Dauer für verpasste Trades (Standard: 180s = 3 Min)
+        - `WHALE_THRESHOLD_SOL`: Schwellenwert für Whale-Trades (Standard: 1.0 SOL)
+        """)
+    
+    st.divider()
+    
+    st.header("📊 11. Vollständige Metriken-Übersicht")
+    
+    st.markdown("""
+    Die `coin_metrics` Tabelle speichert folgende Metriken für jeden Coin in jedem Intervall:
+    """)
+    
+    st.subheader("📋 Basis-Metriken")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        **Identifikation**:
+        - `mint`: Token-Adresse
+        - `timestamp`: Zeitpunkt (Berliner Zeit)
+        - `phase_id_at_time`: Phase zum Zeitpunkt
+        
+        **Preis (OHLC)**:
+        - `price_open`: Erster Preis
+        - `price_high`: Höchster Preis
+        - `price_low`: Niedrigster Preis
+        - `price_close`: Letzter Preis
+        - `market_cap_close`: Market Cap
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Volumen**:
+        - `volume_sol`: Gesamt-Volumen
+        - `buy_volume_sol`: Buy-Volumen
+        - `sell_volume_sol`: Sell-Volumen
+        - `net_volume_sol`: Delta (Buy - Sell)
+        
+        **Trade-Zählung**:
+        - `num_buys`: Anzahl Buys
+        - `num_sells`: Anzahl Sells
+        - `unique_wallets`: Anzahl unique Wallets
+        """)
+    
+    with col3:
+        st.markdown("""
+        **Pump.fun Mechanik**:
+        - `bonding_curve_pct`: Bonding Curve %
+        - `virtual_sol_reserves`: Virtuelles SOL
+        - `is_koth`: King of the Hill (MC > 30k)
+        
+        **Weitere**:
+        - `num_micro_trades`: Trades < 0.01 SOL
+        - `max_single_buy_sol`: Größter Buy
+        - `max_single_sell_sol`: Größter Sell
+        """)
+    
+    st.subheader("🐋 Whale & Erweiterte Metriken")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **Whale-Tracking** (Trades >= `WHALE_THRESHOLD_SOL`):
+        - `whale_buy_volume_sol`: Whale-Buy-Volumen
+        - `whale_sell_volume_sol`: Whale-Sell-Volumen
+        - `num_whale_buys`: Anzahl Whale-Buys
+        - `num_whale_sells`: Anzahl Whale-Sells
+        
+        **Volatilität & Größe**:
+        - `volatility_pct`: Preis-Schwankung %
+        - `avg_trade_size_sol`: Durchschnittliche Trade-Größe
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Ratio-Metriken** (Bot-Spam vs. echtes Interesse):
+        - `buy_pressure_ratio`: Buy-Volumen-Verhältnis [0.0-1.0]
+          - 0.0 = nur Sells, 1.0 = nur Buys, 0.5 = ausgeglichen
+        - `unique_signer_ratio`: Unique-Wallet-Verhältnis [0.0-1.0]
+          - Niedrig = Wash-Trading, Hoch = organisches Wachstum
+        
+        **⚠️ KRITISCH - Rug-Pull-Erkennung**:
+        - `dev_sold_amount`: Verkauftes Volumen vom Creator
+          - **Wichtigster Indikator** für Rug-Pull-Risiko
+          - Wird nur bei Sell-Trades vom Creator gezählt
+        """)
+    
+    st.divider()
+    
+    st.header("🔍 12. Monitoring & Metriken")
+    
+    st.markdown("""
+    Das System bietet verschiedene Monitoring-Endpunkte und Tools:
+    """)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **API-Endpunkte**:
+        - `GET /health`: Health-Check (DB + WebSocket Status)
+        - `GET /metrics`: Prometheus-Metriken (für Monitoring)
+        
+        **Health-Check liefert**:
+        - DB-Verbindungsstatus
+        - WebSocket-Verbindungsstatus
+        - Buffer-Statistiken
+        - Uptime & Fehler-Info
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Web-UI Features**:
+        - **Dashboard**: Live-Status, Statistiken, Buffer-Info
+        - **Konfiguration**: Einstellungen anpassen (außer Coolify)
+        - **Logs**: Live-Logs vom Tracker
+        - **Metriken**: Prometheus-Metriken anzeigen
+        - **Info**: Diese Dokumentation
+        """)
+    
+    st.subheader("📈 Prometheus-Metriken")
+    
+    st.markdown("""
+    Wichtige Prometheus-Metriken für Monitoring:
+    """)
+    
+    st.code("""
+    # Trade-Statistiken
+    tracker_trades_received_total      # Gesamt empfangene Trades
+    tracker_trades_processed_total     # Gesamt verarbeitete Trades
+    tracker_trades_from_buffer_total   # Trades aus Buffer verarbeitet
+    tracker_metrics_saved_total        # Gesamt gespeicherte Metriken
+    
+    # Coin-Statistiken
+    tracker_coins_tracked              # Aktuell getrackte Coins
+    tracker_coins_graduated_total       # Gesamt graduierte Coins
+    tracker_coins_finished_total       # Gesamt beendete Coins
+    tracker_phase_switches_total       # Gesamt Phase-Wechsel
+    
+    # Buffer-System
+    tracker_trade_buffer_size          # Anzahl Coins im Buffer
+    tracker_buffer_trades_total        # Gesamt Trades im Buffer gespeichert
+    
+    # Verbindungs-Status
+    tracker_ws_connected               # WebSocket verbunden (0/1)
+    tracker_db_connected               # DB verbunden (0/1)
+    tracker_ws_reconnects_total        # Anzahl Reconnects
+    tracker_uptime_seconds             # Uptime in Sekunden
+    """, language="text")
+    
+    st.divider()
+    
+    st.header("🎯 13. Zusammenfassung & Workflow")
+    
+    st.markdown("""
+    ### Kompletter Datenfluss (von Discovery bis Metriken)
+    """)
+    
+    st.code("""
+    1. PUMP-DISCOVER:
+       └─> WebSocket: subscribeNewToken
+       └─> API: Coin-Metadaten abrufen
+       └─> DB: discovered_coins (Coin-Info + trader_public_key)
+       └─> DB: coin_streams (Tracking-Status)
+    
+    2. PUMP-METRIC (dieses System):
+       └─> DB: Lade aktive Coins aus coin_streams
+       └─> WebSocket: subscribeTokenTrade (für aktive Coins)
+       └─> WebSocket: subscribeNewToken (für neue Coins)
+       └─> Buffer: Alle Trades für 180s speichern
+       └─> Verarbeitung: Trades aggregieren
+       └─> Berechnung: Metriken berechnen (inkl. Dev-Tracking, Ratios)
+       └─> DB: coin_metrics (alle Metriken speichern)
+    """, language="text")
+    
+    st.markdown("""
+    ### Wichtige Features
+    """)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        ✅ **Buffer-System**:
+        - 180s Universal Trade Buffer
+        - Rückwirkende Verarbeitung
+        - Keine Trades gehen verloren
+        
+        ✅ **Dev-Tracking**:
+        - Creator-Verkäufe werden getrackt
+        - Wichtigster Rug-Pull-Indikator
+        - Basierend auf trader_public_key
+        """)
+    
+    with col2:
+        st.markdown("""
+        ✅ **Erweiterte Metriken**:
+        - Whale-Tracking (>= 1.0 SOL)
+        - Volatilität & Netto-Volumen
+        - Ratio-Metriken (Bot-Spam-Erkennung)
+        
+        ✅ **Automatisierung**:
+        - Phasen-Management
+        - Graduation-Erkennung
+        - Auto-Reconnect
+        """)
+    
+    st.success("""
+    ✅ **Zusammenfassung**: Das System sammelt kontinuierlich Trade-Daten, aggregiert sie in Buffern, 
+    berechnet erweiterte Metriken (inkl. Dev-Tracking und Ratios) und speichert sie periodisch in die Datenbank. 
+    Alle Prozesse laufen automatisch und erfordern keine manuelle Intervention.
+    
+    **Für KI-Modelle besonders wichtig**:
+    - `dev_sold_amount`: Rug-Pull-Risiko-Indikator
+    - `buy_pressure_ratio`: Relatives Buy/Sell-Verhältnis
+    - `unique_signer_ratio`: Wash-Trading-Erkennung
+    - `whale_*`: Institutionelles Interesse
+    - `volatility_pct`: Risiko-Bewertung
     """)
     
     st.divider()
     
-    st.header("📊 11. Monitoring & Metriken")
+    st.header("📚 14. Technische Details")
+    
+    st.subheader("Datenquellen")
     
     st.markdown("""
-    Das System bietet verschiedene Monitoring-Endpunkte:
+    - **WebSocket**: `wss://pumpportal.fun/api/data`
+      - `subscribeNewToken`: Neue Coins erkennen
+      - `subscribeTokenTrade`: Trade-Events empfangen
     
-    - **Health-Check**: `/health` - Status von DB und WebSocket
-    - **Prometheus Metrics**: `/metrics` - Detaillierte Metriken für Monitoring
-    - **Web-UI**: Dashboard mit Live-Status und Konfiguration
+    - **Datenbank**: PostgreSQL
+      - `discovered_coins`: Coin-Metadaten (inkl. `trader_public_key`)
+      - `coin_streams`: Tracking-Status
+      - `coin_metrics`: Gespeicherte Metriken
+      - `ref_coin_phases`: Phasen-Konfiguration
     """)
     
-    st.success("""
-    ✅ **Zusammenfassung**: Das System sammelt kontinuierlich Trade-Daten, aggregiert sie in Buffern, 
-    berechnet Metriken und speichert sie periodisch in die Datenbank. Alle Prozesse laufen automatisch 
-    und erfordern keine manuelle Intervention.
+    st.subheader("Performance-Optimierungen")
+    
+    st.markdown("""
+    - **Batch-Inserts**: Metriken werden in Batches gespeichert (nicht einzeln)
+    - **Buffer-Cleanup**: Alte Trades werden alle 10s entfernt
+    - **DB-Refresh**: Nur alle 10s wird nach neuen Coins gesucht
+    - **Gap-Check**: Nur alle 60s wird auf Lücken geprüft
+    - **Index**: `idx_metrics_mint_time` für schnelle Abfragen
+    """)
+    
+    st.subheader("Fehlerbehandlung")
+    
+    st.markdown("""
+    - **WebSocket**: Automatischer Reconnect mit exponentieller Backoff
+    - **Datenbank**: Retry-Logik mit konfigurierbarer Wartezeit
+    - **Fehler-Logging**: Alle Fehler werden geloggt und in Health-Check angezeigt
+    - **Graceful Degradation**: System läuft weiter auch bei Teilausfällen
     """)
 
