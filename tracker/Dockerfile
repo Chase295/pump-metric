@@ -10,6 +10,7 @@ RUN apt-get update && \
 
 # Kopiere main.py
 COPY main.py .
+COPY db_migration.py .
 
 # Port für Health + Metrics freigeben
 EXPOSE 8000
