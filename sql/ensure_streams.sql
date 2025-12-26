@@ -24,7 +24,7 @@ BEGIN
             started_at
         ) VALUES (
             NEW.token_address,
-            1,  -- Default Phase 1 (phase_id wurde aus discovered_coins entfernt)
+            COALESCE(NEW.phase_id, 1),  -- Verwende phase_id aus discovered_coins oder Default 1
             COALESCE(NEW.is_active, TRUE),  -- Verwende is_active aus discovered_coins oder Default TRUE
             COALESCE(NEW.is_graduated, FALSE),  -- Verwende is_graduated aus discovered_coins oder Default FALSE
             COALESCE(NEW.discovered_at, NOW())  -- Verwende discovered_at oder jetzt
@@ -69,7 +69,7 @@ BEGIN
     )
     SELECT 
         ms.token_address,
-        1,  -- Default Phase 1 (phase_id wurde aus discovered_coins entfernt)
+        COALESCE(dc.phase_id, 1),
         COALESCE(dc.is_active, TRUE),
         COALESCE(dc.is_graduated, FALSE),
         COALESCE(dc.discovered_at, NOW())
