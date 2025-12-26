@@ -23,10 +23,10 @@ st.set_page_config(
 )
 
 def load_config():
-    """Lädt Konfiguration aus Environment Variables (Coolify) oder Fallback auf Dateien"""
+    """Lädt Konfiguration - Priorität: YAML > .env > Environment Variables"""
     config = {}
     
-    # PRIORITÄT 1: Lade aus Environment Variables (Coolify verwendet diese)
+    # SCHRITT 1: Lade aus Environment Variables als Basis (Fallback)
     env_vars = {
         'DB_DSN': os.getenv('DB_DSN'),
         'WS_URI': os.getenv('WS_URI', 'wss://pumpportal.fun/api/data'),
@@ -40,6 +40,7 @@ def load_config():
         'SOL_RESERVES_FULL': os.getenv('SOL_RESERVES_FULL', '85.0'),
         'AGE_CALCULATION_OFFSET_MIN': os.getenv('AGE_CALCULATION_OFFSET_MIN', '60'),
         'TRADE_BUFFER_SECONDS': os.getenv('TRADE_BUFFER_SECONDS', '180'),
+        'WHALE_THRESHOLD_SOL': os.getenv('WHALE_THRESHOLD_SOL', '1.0'),
         'HEALTH_PORT': os.getenv('HEALTH_PORT', '8000'),
     }
     
@@ -55,24 +56,8 @@ def load_config():
                 except:
                     config[key] = value
     
-    # Wenn Environment Variables vorhanden sind, verwende diese
-    if config.get('DB_DSN'):
-        return config
-    
-    # FALLBACK: Versuche YAML-Datei
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, 'r') as f:
-                file_config = yaml.safe_load(f)
-                if file_config:
-                    # Merge mit Environment Variables (Env hat Priorität)
-                    file_config.update(config)
-                    return file_config
-        except Exception:
-            pass
-    
-    # FALLBACK: Versuche .env Datei
-    env_paths = ["/app/.env", "/app/../.env", "/app/config/.env", ".env"]
+    # SCHRITT 2: Lade aus .env Datei (überschreibt Environment Variables)
+    env_paths = ["/app/config/.env", "/app/.env", "/app/../.env", ".env"]
     for env_path in env_paths:
         if os.path.exists(env_path):
             try:
@@ -82,8 +67,8 @@ def load_config():
                         if line and not line.startswith('#') and '=' in line:
                             key, value = line.split('=', 1)
                             key = key.strip()
-                            value = value.strip()
-                            if key not in config:  # Nur wenn nicht bereits aus Env-Vars
+                            value = value.strip().strip('"').strip("'")
+                            if value:  # Nur wenn Wert nicht leer
                                 if value.isdigit():
                                     config[key] = int(value)
                                 else:
@@ -91,8 +76,20 @@ def load_config():
                                         config[key] = float(value)
                                     except:
                                         config[key] = value
+                break  # Erste gefundene .env Datei verwenden
             except Exception:
                 continue
+    
+    # SCHRITT 3: Lade aus YAML-Datei (höchste Priorität für UI)
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                file_config = yaml.safe_load(f)
+                if file_config:
+                    # YAML überschreibt alles
+                    config.update(file_config)
+        except Exception:
+            pass
     
     # Wenn nichts gefunden wurde, verwende Defaults
     if not config:
@@ -639,11 +636,17 @@ with tab2:
                     if result:
                         st.session_state.config_saved = True
                         st.success("✅ Konfiguration gespeichert!")
+                        # Lade Config neu, damit die Felder aktualisiert werden
+                        st.session_state.config_reload_needed = True
                         
                         if using_env_vars:
                             st.info("💡 **Tipp:** Nutze den 'Konfiguration neu laden' Button unten, um die Änderungen ohne Neustart zu übernehmen (funktioniert auch in Coolify!).")
                         else:
                             st.info("💡 **Tipp:** Nutze den 'Konfiguration neu laden' Button unten, um die Änderungen ohne Neustart zu übernehmen.")
+                        
+                        # Seite neu laden, damit neue Werte angezeigt werden
+                        time.sleep(0.5)
+                        st.rerun()
                 except (OSError, PermissionError) as e:
                     st.error(f"❌ **Fehler beim Speichern:** {e}")
                     if using_env_vars:
@@ -657,6 +660,7 @@ with tab2:
                 st.session_state.config_saved = True
                 st.success("✅ Konfiguration auf Standard zurückgesetzt!")
                 st.warning("⚠️ Bitte Service neu starten oder 'Konfiguration neu laden' Button unten verwenden!")
+                time.sleep(0.5)
                 st.rerun()
     
     # Reload-Button AUSSERHALB des Forms (immer sichtbar)
