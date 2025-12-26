@@ -1651,17 +1651,24 @@
     "list": [
       {
         "current": {
-          "selected": false,
+          "selected": true,
           "text": "Prometheus",
           "value": "Prometheus"
         },
         "hide": 0,
         "includeAll": false,
-        "label": "Data Source",
+        "label": "Prometheus Data Source",
         "multi": false,
         "name": "DS_PROMETHEUS",
-        "options": [],
+        "options": [
+          {
+            "selected": true,
+            "text": "Prometheus",
+            "value": "Prometheus"
+          }
+        ],
         "query": "prometheus",
+        "queryValue": "",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
