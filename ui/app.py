@@ -1999,11 +1999,164 @@ if sol_amount >= WHALE_THRESHOLD_SOL:  # Standard: 1.0 SOL
         - `max_single_buy_sol`
         - `max_single_sell_sol`
         - `dev_sold_amount` (aktuell 0)
+        
+        **Erweiterte Metriken (NEU)**:
+        - `net_volume_sol`: Netto-Volumen (Delta: Buy - Sell)
+        - `volatility_pct`: Volatilität in Prozent
+        - `avg_trade_size_sol`: Durchschnittliche Trade-Größe
+        - `whale_buy_volume_sol`: Whale-Buy-Volumen (Trades >= 1.0 SOL)
+        - `whale_sell_volume_sol`: Whale-Sell-Volumen
+        - `num_whale_buys`: Anzahl Whale-Buys
+        - `num_whale_sells`: Anzahl Whale-Sells
         """)
     
     st.divider()
     
-    st.header("🔄 8. Batch-Verarbeitung")
+    st.header("📊 8. Erweiterte Metriken (Neu)")
+    
+    st.markdown("""
+    Seit der letzten Erweiterung werden zusätzliche Metriken berechnet, die tiefere Einblicke in das Trade-Verhalten geben:
+    """)
+    
+    st.subheader("💰 Netto-Volumen (Delta)")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **Berechnung**:
+        ```
+        net_volume_sol = buy_volume_sol - sell_volume_sol
+        ```
+        
+        **Interpretation**:
+        - **Positiv**: Mehr Kaufdruck als Verkaufsdruck
+        - **Negativ**: Mehr Verkaufsdruck als Kaufdruck
+        - **0**: Ausgewogenes Verhältnis
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Beispiel**:
+        - `buy_volume_sol = 10.5 SOL`
+        - `sell_volume_sol = 6.2 SOL`
+        - `net_volume_sol = +4.3 SOL` ✅ (Kaufdruck)
+        
+        **Verwendung**:
+        - Identifikation von Bullish/Bearish Trends
+        - Erkennung von Verkaufsdruck
+        """)
+    
+    st.subheader("📈 Volatilität")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **Berechnung**:
+        ```
+        volatility_pct = ((price_high - price_low) / price_open) * 100
+        ```
+        
+        **Interpretation**:
+        - **Niedrig (< 10%)**: Stabile Preise
+        - **Mittel (10-30%)**: Normale Schwankungen
+        - **Hoch (> 30%)**: Sehr volatile Preise
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Beispiel**:
+        - `price_open = 0.001 SOL`
+        - `price_high = 0.0015 SOL`
+        - `price_low = 0.0008 SOL`
+        - `volatility_pct = 70%` ⚠️ (Sehr volatil)
+        
+        **Verwendung**:
+        - Risiko-Bewertung
+        - Erkennung von Pump & Dump
+        """)
+    
+    st.subheader("📊 Durchschnittliche Trade-Größe")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **Berechnung**:
+        ```
+        avg_trade_size_sol = volume_sol / (num_buys + num_sells)
+        ```
+        
+        **Interpretation**:
+        - **Niedrig (< 0.1 SOL)**: Viele kleine Trades (Retail)
+        - **Mittel (0.1-1.0 SOL)**: Gemischte Trader
+        - **Hoch (> 1.0 SOL)**: Große Trader (Whales)
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Beispiel**:
+        - `volume_sol = 10.0 SOL`
+        - `num_buys + num_sells = 50`
+        - `avg_trade_size_sol = 0.2 SOL`
+        
+        **Verwendung**:
+        - Retail vs. Whale-Analyse
+        - Identifikation von Bot-Aktivität
+        """)
+    
+    st.subheader("🐋 Whale-Tracking")
+    
+    st.markdown("""
+    **Definition**: Trades mit einem Volumen >= `WHALE_THRESHOLD_SOL` (Standard: 1.0 SOL) werden als "Whale-Trades" klassifiziert.
+    """)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **Buy-Whales**:
+        - `whale_buy_volume_sol`: Gesamtvolumen aller Whale-Buys
+        - `num_whale_buys`: Anzahl Whale-Buy-Trades
+        
+        **Interpretation**:
+        - Viele Whale-Buys = Institutionelles Interesse
+        - Hohes Whale-Volumen = Signifikante Investition
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Sell-Whales**:
+        - `whale_sell_volume_sol`: Gesamtvolumen aller Whale-Sells
+        - `num_whale_sells`: Anzahl Whale-Sell-Trades
+        
+        **Interpretation**:
+        - Viele Whale-Sells = Profit-Taking oder Exit
+        - Hohes Whale-Sell-Volumen = Signifikante Verkäufe
+        """)
+    
+    st.code("""
+    # Whale-Erkennung während Trade-Verarbeitung
+    if sol_amount >= WHALE_THRESHOLD_SOL:  # Standard: 1.0 SOL
+        if is_buy:
+            whale_buy_vol += sol_amount
+            num_whale_buys += 1
+        else:
+            whale_sell_vol += sol_amount
+            num_whale_sells += 1
+    """, language="python")
+    
+    st.info("""
+    💡 **Wichtig**: 
+    - Whale-Tracking erfolgt **während** der Trade-Verarbeitung (kein zusätzlicher Loop)
+    - Schwellenwert ist konfigurierbar über `WHALE_THRESHOLD_SOL` (Standard: 1.0 SOL)
+    - Alle Werte basieren auf **echten Trade-Daten** (keine erfundenen Zahlen)
+    """)
+    
+    st.divider()
+    
+    st.header("🔄 9. Batch-Verarbeitung")
     
     st.markdown("""
     - Metriken werden **nicht einzeln** gespeichert, sondern in **Batches**
@@ -2019,7 +2172,7 @@ if sol_amount >= WHALE_THRESHOLD_SOL:  # Standard: 1.0 SOL
     
     st.divider()
     
-    st.header("⚙️ 9. Konfiguration")
+    st.header("⚙️ 10. Konfiguration")
     
     st.markdown("""
     Wichtige Konfigurationsparameter (siehe Konfiguration-Tab):
@@ -2032,7 +2185,7 @@ if sol_amount >= WHALE_THRESHOLD_SOL:  # Standard: 1.0 SOL
     
     st.divider()
     
-    st.header("📊 10. Monitoring & Metriken")
+    st.header("📊 11. Monitoring & Metriken")
     
     st.markdown("""
     Das System bietet verschiedene Monitoring-Endpunkte:
