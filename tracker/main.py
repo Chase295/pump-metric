@@ -76,48 +76,70 @@ async def metrics_handler(request):
     return web.Response(body=generate_latest(), content_type="text/plain; version=0.0.4", charset="utf-8")
 
 async def health_check(request):
-    global _tracker_instance
-    db_status = tracker_status.get("db_connected", False)
-    ws_status = tracker_status.get("ws_connected", False)
-    uptime = time.time() - tracker_status["start_time"]
-    last_msg = tracker_status.get("last_message_time")
-    
-    # Buffer-Statistiken berechnen
-    buffer_stats = {
-        "total_trades_in_buffer": 0,
-        "coins_with_buffer": 0,
-        "buffer_details": {}
-    }
-    
-    # Hole Tracker-Instanz (wenn verfügbar)
-    if _tracker_instance and hasattr(_tracker_instance, 'trade_buffer'):
-        buffer_stats["total_trades_in_buffer"] = sum(len(trades) for trades in _tracker_instance.trade_buffer.values())
-        buffer_stats["coins_with_buffer"] = len(_tracker_instance.trade_buffer)
+    """Health-Check Endpoint - muss immer funktionieren, auch während Initialisierung"""
+    try:
+        global _tracker_instance
+        db_status = tracker_status.get("db_connected", False)
+        ws_status = tracker_status.get("ws_connected", False)
+        uptime = time.time() - tracker_status.get("start_time", time.time())
+        last_msg = tracker_status.get("last_message_time")
         
-        # Top 10 Coins mit meisten Trades im Buffer
-        coin_buffer_counts = [(mint, len(trades)) for mint, trades in _tracker_instance.trade_buffer.items()]
-        coin_buffer_counts.sort(key=lambda x: x[1], reverse=True)
-        
-        buffer_stats["buffer_details"] = {
-            coin[:12] + "..." if len(coin) > 12 else coin: count 
-            for coin, count in coin_buffer_counts[:10]
+        # Buffer-Statistiken berechnen (sicherheitshalber mit try-except)
+        buffer_stats = {
+            "total_trades_in_buffer": 0,
+            "coins_with_buffer": 0,
+            "buffer_details": {}
         }
-    
-    health_data = {
-        "status": "healthy" if (db_status and ws_status) else "degraded",
-        "db_connected": db_status,
-        "ws_connected": ws_status,
-        "uptime_seconds": int(uptime),
-        "total_trades": tracker_status["total_trades"],
-        "total_metrics_saved": tracker_status["total_metrics_saved"],
-        "last_message_ago": int(time.time() - last_msg) if last_msg else None,
-        "reconnect_count": tracker_status["reconnect_count"],
-        "last_error": tracker_status.get("last_error"),
-        "buffer_stats": buffer_stats
-    }
-    
-    status_code = 200 if (db_status and ws_status) else 503
-    return web.json_response(health_data, status=status_code)
+        
+        # Hole Tracker-Instanz (wenn verfügbar)
+        try:
+            if _tracker_instance and hasattr(_tracker_instance, 'trade_buffer'):
+                buffer_stats["total_trades_in_buffer"] = sum(len(trades) for trades in _tracker_instance.trade_buffer.values())
+                buffer_stats["coins_with_buffer"] = len(_tracker_instance.trade_buffer)
+                
+                # Top 10 Coins mit meisten Trades im Buffer
+                coin_buffer_counts = [(mint, len(trades)) for mint, trades in _tracker_instance.trade_buffer.items()]
+                coin_buffer_counts.sort(key=lambda x: x[1], reverse=True)
+                
+                buffer_stats["buffer_details"] = {
+                    coin[:12] + "..." if len(coin) > 12 else coin: count 
+                    for coin, count in coin_buffer_counts[:10]
+                }
+        except Exception as e:
+            # Buffer-Statistiken sind optional - Fehler ignorieren
+            pass
+        
+        health_data = {
+            "status": "healthy" if (db_status and ws_status) else "degraded",
+            "db_connected": db_status,
+            "ws_connected": ws_status,
+            "uptime_seconds": int(uptime),
+            "total_trades": tracker_status.get("total_trades", 0),
+            "total_metrics_saved": tracker_status.get("total_metrics_saved", 0),
+            "last_message_ago": int(time.time() - last_msg) if last_msg else None,
+            "reconnect_count": tracker_status.get("reconnect_count", 0),
+            "last_error": tracker_status.get("last_error"),
+            "buffer_stats": buffer_stats
+        }
+        
+        # HTTP Status Code: 200 für healthy/degraded, 503 nur bei kritischen Fehlern
+        # WICHTIG: Coolify erwartet 200 für "healthy" Status
+        if db_status and ws_status:
+            status_code = 200  # Healthy
+        elif db_status or ws_status:
+            status_code = 200  # Degraded (aber noch funktionsfähig) - Coolify sollte "Running" zeigen
+        else:
+            status_code = 503  # Service Unavailable (beide Verbindungen down)
+        
+        return web.json_response(health_data, status=status_code)
+    except Exception as e:
+        # Fallback: Immer einen gültigen Response zurückgeben
+        error_data = {
+            "status": "error",
+            "error": str(e),
+            "uptime_seconds": int(time.time() - tracker_status.get("start_time", time.time()))
+        }
+        return web.json_response(error_data, status=500)
 
 async def start_health_server():
     """Startet den Health-Check Server - muss sofort verfügbar sein"""
