@@ -569,10 +569,9 @@ with tab2:
     using_env_vars = bool(os.getenv('DB_DSN'))
     
     if using_env_vars:
-        st.warning("⚠️ **Coolify-Modus:** Die Konfiguration wird über Environment Variables verwaltet. Änderungen müssen in der Coolify Web-UI gemacht werden, nicht hier!")
-        st.info("💡 Gehe zu deiner Coolify-Anwendung → Environment Variables, um die Einstellungen zu ändern. Nach Änderungen muss die Anwendung neu deployed werden.")
+        st.info("🌐 **Coolify-Modus erkannt:** Environment Variables haben Priorität, aber du kannst die Konfiguration trotzdem hier speichern und über den 'Konfiguration neu laden' Button übernehmen (ohne Neustart!).")
     else:
-        st.info("💡 Änderungen werden in der Konfigurationsdatei gespeichert. Ein Service-Neustart ist erforderlich, damit die Änderungen wirksam werden.")
+        st.info("💡 Änderungen werden in der Konfigurationsdatei gespeichert. Nutze den 'Konfiguration neu laden' Button, um Änderungen ohne Neustart zu übernehmen.")
     
     with st.form("config_form"):
         st.subheader("🗄️ Datenbank Einstellungen")
@@ -608,13 +607,9 @@ with tab2:
         
         col1, col2 = st.columns(2)
         with col1:
-            save_button = st.form_submit_button("💾 Konfiguration speichern", type="primary", disabled=using_env_vars)
+            save_button = st.form_submit_button("💾 Konfiguration speichern", type="primary")
         with col2:
-            reset_button = st.form_submit_button("🔄 Auf Standard zurücksetzen", disabled=using_env_vars)
-        
-        if using_env_vars:
-            st.warning("⚠️ **Speichern deaktiviert:** In Coolify müssen Änderungen über Environment Variables in der Coolify Web-UI gemacht werden!")
-            st.info("💡 **Alternative:** Du kannst die Konfiguration trotzdem speichern und dann über den 'Konfiguration neu laden' Button übernehmen (funktioniert auch in Coolify).")
+            reset_button = st.form_submit_button("🔄 Auf Standard zurücksetzen")
         
         if save_button:
             # Validierung vor dem Speichern
@@ -639,19 +634,22 @@ with tab2:
                 for error in errors:
                     st.error(f"  - {error}")
             else:
-                if using_env_vars:
-                    st.error("❌ **Fehler:** In Coolify können Konfigurationen nicht über die UI gespeichert werden. Bitte verwende die Coolify Web-UI → Environment Variables.")
-                else:
-                    try:
-                        result = save_config(config)
-                        if result:
-                            st.session_state.config_saved = True
-                            st.success("✅ Konfiguration gespeichert!")
-                            
-                            st.info("💡 **Tipp:** Du kannst die Konfiguration jetzt ohne Neustart übernehmen! Nutze den 'Konfiguration neu laden' Button unten.")
-                    except (OSError, PermissionError) as e:
-                        st.error(f"❌ **Fehler beim Speichern:** {e}")
-                        st.info("💡 Das Dateisystem ist möglicherweise read-only. In Coolify verwende bitte Environment Variables in der Web-UI.")
+                try:
+                    result = save_config(config)
+                    if result:
+                        st.session_state.config_saved = True
+                        st.success("✅ Konfiguration gespeichert!")
+                        
+                        if using_env_vars:
+                            st.info("💡 **Tipp:** Nutze den 'Konfiguration neu laden' Button unten, um die Änderungen ohne Neustart zu übernehmen (funktioniert auch in Coolify!).")
+                        else:
+                            st.info("💡 **Tipp:** Nutze den 'Konfiguration neu laden' Button unten, um die Änderungen ohne Neustart zu übernehmen.")
+                except (OSError, PermissionError) as e:
+                    st.error(f"❌ **Fehler beim Speichern:** {e}")
+                    if using_env_vars:
+                        st.info("💡 Falls das Speichern fehlschlägt, kannst du die Konfiguration auch über Environment Variables in der Coolify Web-UI ändern.")
+                    else:
+                        st.info("💡 Prüfe die Dateiberechtigungen für das Config-Volume.")
         
         if reset_button:
             default_config = get_default_config()
