@@ -12,3 +12,4 @@ ALTER TABLE coin_metrics
 COMMENT ON COLUMN coin_metrics.buy_pressure_ratio IS 'Buy-Volumen-Verhältnis: buy_volume / (buy_volume + sell_volume). 0.0 = nur Sells, 1.0 = nur Buys, 0.5 = ausgeglichen';
 COMMENT ON COLUMN coin_metrics.unique_signer_ratio IS 'Unique-Wallet-Verhältnis: unique_wallets / (num_buys + num_sells). Niedrig = Wash-Trading, Hoch = organisches Wachstum';
 
+

@@ -26,3 +26,4 @@ COMMENT ON COLUMN coin_metrics.whale_sell_volume_sol IS 'Volumen von Sell-Trades
 COMMENT ON COLUMN coin_metrics.num_whale_buys IS 'Anzahl Buy-Trades >= WHALE_THRESHOLD_SOL';
 COMMENT ON COLUMN coin_metrics.num_whale_sells IS 'Anzahl Sell-Trades >= WHALE_THRESHOLD_SOL';
 
+

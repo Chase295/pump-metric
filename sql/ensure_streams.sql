@@ -110,3 +110,4 @@ COMMENT ON FUNCTION repair_missing_streams() IS 'Repariert fehlende Streams für
 COMMENT ON FUNCTION check_stream_gaps() IS 'Prüft auf Lücken zwischen discovered_coins und coin_streams';
 
 
+

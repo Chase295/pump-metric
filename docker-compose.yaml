@@ -27,7 +27,7 @@ services:
       # Von extern erreichbar auf Port 8009
       - "0.0.0.0:${TRACKER_PORT:-8009}:8000"
     volumes:
-      - ./config:/app/config:ro
+      - config_data:/app/config:rw
     networks:
       - pump-metric-network
     healthcheck:
@@ -53,17 +53,23 @@ services:
       # Von extern erreichbar
       - "0.0.0.0:${UI_PORT:-8499}:8501"
     volumes:
-      - ./config:/app/config:rw
+      - config_data:/app/config:rw
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - pump-metric-network
     depends_on:
       - tracker
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
 networks:
   pump-metric-network:
     driver: bridge
 
 volumes:
-  config:
+  config_data:  # Named Volume für geteilte Konfiguration (Coolify-kompatibel)
 

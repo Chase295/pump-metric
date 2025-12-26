@@ -385,3 +385,4 @@ Das Buffer-System funktioniert in **4 Schritten**:
 - ✅ Keine Trades gehen verloren, wenn Coin innerhalb von 180s aktiviert wird
 - ⚠️ Trades die **vor** der Coin-Erstellung oder **nach** 180s passieren, können verloren gehen
 
+

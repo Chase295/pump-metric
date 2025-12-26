@@ -55,3 +55,4 @@ SELECT * FROM check_stream_gaps();
 - ✅ **Monitoring** erkennt Lücken sofort
 
 
+

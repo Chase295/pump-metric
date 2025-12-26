@@ -116,12 +116,13 @@ def save_config(config):
         # Dateisystem ist read-only - wirf Exception weiter
         raise OSError(f"Config-Datei kann nicht geschrieben werden (read-only): {e}")
     
-    # Speichere .env (für Docker Compose / Tracker Service)
+    # Speichere .env (für Tracker Service - im geteilten Volume)
+    env_file = "/app/config/.env"  # Im geteilten Volume
     env_content = f"""# ============================================================================
 # PUMP METRIC - Umgebungsvariablen
 # ============================================================================
 # Diese Datei wird automatisch von der Streamlit UI verwaltet.
-# Änderungen werden beim Service-Neustart übernommen.
+# Änderungen können über den "Konfiguration neu laden" Button übernommen werden (ohne Neustart).
 # ============================================================================
 
 # Datenbank Einstellungen
@@ -142,9 +143,19 @@ DB_RETRY_DELAY={config.get('DB_RETRY_DELAY', 5)}
 # Tracker Einstellungen
 SOL_RESERVES_FULL={config.get('SOL_RESERVES_FULL', 85.0)}
 AGE_CALCULATION_OFFSET_MIN={config.get('AGE_CALCULATION_OFFSET_MIN', 60)}
+TRADE_BUFFER_SECONDS={config.get('TRADE_BUFFER_SECONDS', 180)}
+WHALE_THRESHOLD_SOL={config.get('WHALE_THRESHOLD_SOL', 1.0)}
 
 # Health-Check Port
 HEALTH_PORT={config.get('HEALTH_PORT', 8000)}
+"""
+    try:
+        os.makedirs(os.path.dirname(env_file), exist_ok=True)
+        with open(env_file, 'w') as f:
+            f.write(env_content)
+    except (OSError, PermissionError) as e:
+        # .env Datei kann nicht geschrieben werden - ignorieren (optional)
+        pass  # Optional - nicht kritisch
 
 # Docker Compose Ports
 TRACKER_PORT=8000
@@ -232,6 +243,24 @@ def get_tracker_health():
         except:
             pass
     return None
+
+def reload_tracker_config():
+    """Lädt die Konfiguration im Tracker-Service neu (ohne Neustart)"""
+    try:
+        # POST-Request an Tracker-Service
+        response = requests.post(
+            f"http://{TRACKER_SERVICE}:{TRACKER_PORT}/reload-config",
+            timeout=5
+        )
+        if response.status_code == 200:
+            data = response.json()
+            return True, data.get("message", "Konfiguration wurde neu geladen")
+        else:
+            return False, f"Fehler: HTTP {response.status_code}"
+    except requests.exceptions.ConnectionError:
+        return False, "Verbindung zum Tracker-Service fehlgeschlagen. Ist der Service gestartet?"
+    except Exception as e:
+        return False, f"Fehler beim Neuladen: {str(e)}"
 
 def get_tracker_metrics():
     """Holt Prometheus Metrics vom Tracker-Service"""
@@ -610,6 +639,21 @@ with tab2:
         
         if using_env_vars:
             st.warning("⚠️ **Speichern deaktiviert:** In Coolify müssen Änderungen über Environment Variables in der Coolify Web-UI gemacht werden!")
+            st.info("💡 **Alternative:** Du kannst die Konfiguration trotzdem speichern und dann über den 'Konfiguration neu laden' Button übernehmen (funktioniert auch in Coolify).")
+        
+        # Reload-Button (immer sichtbar, auch wenn Config nicht gespeichert wurde)
+        st.divider()
+        st.subheader("🔄 Konfiguration neu laden")
+        st.caption("Lädt die gespeicherte Konfiguration im Tracker-Service neu (ohne Neustart)")
+        if st.button("🔄 Konfiguration neu laden", type="primary", key="reload_config_button"):
+            with st.spinner("Konfiguration wird neu geladen..."):
+                success, message = reload_tracker_config()
+                if success:
+                    st.success(f"✅ {message}")
+                    st.info("💡 Die neue Konfiguration ist jetzt aktiv! Kein Neustart nötig.")
+                else:
+                    st.error(f"❌ {message}")
+                    st.info("💡 Falls der Reload fehlschlägt, starte den Tracker-Service manuell neu.")
         
         if save_button:
             # Validierung vor dem Speichern
@@ -642,7 +686,18 @@ with tab2:
                         if result:
                             st.session_state.config_saved = True
                             st.success("✅ Konfiguration gespeichert!")
-                            st.warning("⚠️ **WICHTIG:** Die `.env` Datei wurde aktualisiert. Bitte Tracker-Service neu starten, damit die Änderungen wirksam werden!")
+                            
+                            # Zeige Reload-Button
+                            st.info("💡 **Tipp:** Du kannst die Konfiguration jetzt ohne Neustart übernehmen!")
+                            if st.button("🔄 Konfiguration neu laden (ohne Neustart)", type="primary", key="reload_after_save"):
+                                with st.spinner("Konfiguration wird neu geladen..."):
+                                    success, message = reload_tracker_config()
+                                    if success:
+                                        st.success(f"✅ {message}")
+                                        st.balloons()
+                                    else:
+                                        st.error(f"❌ {message}")
+                                        st.info("💡 Falls der Reload fehlschlägt, starte den Tracker-Service manuell neu.")
                     except (OSError, PermissionError) as e:
                         st.error(f"❌ **Fehler beim Speichern:** {e}")
                         st.info("💡 Das Dateisystem ist möglicherweise read-only. In Coolify verwende bitte Environment Variables in der Web-UI.")
@@ -808,7 +863,7 @@ with tab4:
         st.subheader("📊 Erweiterte Metriken (aus coin_metrics)")
         
         st.info("""
-        💡 **Hinweis**: Die erweiterten Metriken (Whale-Tracking, Volatilität, Netto-Volumen, etc.) 
+        **Hinweis**: Die erweiterten Metriken (Whale-Tracking, Volatilität, Netto-Volumen, etc.) 
         werden in der Datenbank gespeichert und können über SQL-Abfragen abgerufen werden.
         
         **Verfügbare Metriken**:

@@ -84,6 +84,49 @@ async def health_check(request):
         uptime = time.time() - tracker_status.get("start_time", time.time())
         last_msg = tracker_status.get("last_message_time")
         
+        # DB-Tabellen-Prüfung (wenn DB verbunden ist)
+        db_table_check = {
+            "coin_metrics_exists": False,
+            "coin_streams_exists": False,
+            "discovered_coins_exists": False
+        }
+        
+        if db_status and _tracker_instance and _tracker_instance.pool:
+            try:
+                async with _tracker_instance.pool.acquire() as conn:
+                    # Prüfe coin_metrics Tabelle
+                    coin_metrics_exists = await conn.fetchval("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables 
+                            WHERE table_schema = 'public' 
+                            AND table_name = 'coin_metrics'
+                        )
+                    """)
+                    db_table_check["coin_metrics_exists"] = coin_metrics_exists
+                    
+                    # Prüfe coin_streams Tabelle
+                    coin_streams_exists = await conn.fetchval("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables 
+                            WHERE table_schema = 'public' 
+                            AND table_name = 'coin_streams'
+                        )
+                    """)
+                    db_table_check["coin_streams_exists"] = coin_streams_exists
+                    
+                    # Prüfe discovered_coins Tabelle
+                    discovered_coins_exists = await conn.fetchval("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables 
+                            WHERE table_schema = 'public' 
+                            AND table_name = 'discovered_coins'
+                        )
+                    """)
+                    db_table_check["discovered_coins_exists"] = discovered_coins_exists
+            except Exception as e:
+                # Tabellen-Prüfung fehlgeschlagen - ignorieren
+                pass
+        
         # Buffer-Statistiken berechnen (sicherheitshalber mit try-except)
         buffer_stats = {
             "total_trades_in_buffer": 0,
@@ -112,6 +155,7 @@ async def health_check(request):
         health_data = {
             "status": "healthy" if (db_status and ws_status) else "degraded",
             "db_connected": db_status,
+            "db_tables": db_table_check,
             "ws_connected": ws_status,
             "uptime_seconds": int(uptime),
             "total_trades": tracker_status.get("total_trades", 0),
@@ -131,7 +175,11 @@ async def health_check(request):
         else:
             status_code = 503  # Service Unavailable (beide Verbindungen down)
         
-        return web.json_response(health_data, status=status_code)
+        # Coolify-spezifische Header für bessere Erkennung
+        response = web.json_response(health_data, status=status_code)
+        response.headers['X-Health-Status'] = health_data['status']
+        response.headers['X-Service-Status'] = 'running' if status_code == 200 else 'unavailable'
+        return response
     except Exception as e:
         # Fallback: Immer einen gültigen Response zurückgeben
         error_data = {
@@ -141,12 +189,77 @@ async def health_check(request):
         }
         return web.json_response(error_data, status=500)
 
+async def reload_config_handler(request):
+    """Lädt die Konfiguration neu (ohne Neustart)"""
+    try:
+        global DB_REFRESH_INTERVAL, SOL_RESERVES_FULL, AGE_CALCULATION_OFFSET_MIN
+        global TRADE_BUFFER_SECONDS, WHALE_THRESHOLD_SOL
+        global DB_RETRY_DELAY, WS_RETRY_DELAY, WS_MAX_RETRY_DELAY
+        global WS_PING_INTERVAL, WS_PING_TIMEOUT, WS_CONNECTION_TIMEOUT
+        
+        # Lade Config aus .env Datei (im geteilten Volume)
+        config_file = "/app/config/.env"
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#') and '=' in line:
+                            key, value = line.split('=', 1)
+                            key = key.strip()
+                            value = value.strip().strip('"').strip("'")
+                            
+                            # Überschreibe globale Variablen
+                            if key == "DB_REFRESH_INTERVAL" and value.isdigit():
+                                DB_REFRESH_INTERVAL = int(value)
+                            elif key == "SOL_RESERVES_FULL":
+                                SOL_RESERVES_FULL = float(value)
+                            elif key == "AGE_CALCULATION_OFFSET_MIN" and value.isdigit():
+                                AGE_CALCULATION_OFFSET_MIN = int(value)
+                            elif key == "TRADE_BUFFER_SECONDS" and value.isdigit():
+                                TRADE_BUFFER_SECONDS = int(value)
+                            elif key == "WHALE_THRESHOLD_SOL":
+                                WHALE_THRESHOLD_SOL = float(value)
+                            elif key == "DB_RETRY_DELAY" and value.isdigit():
+                                DB_RETRY_DELAY = int(value)
+                            elif key == "WS_RETRY_DELAY" and value.isdigit():
+                                WS_RETRY_DELAY = int(value)
+                            elif key == "WS_MAX_RETRY_DELAY" and value.isdigit():
+                                WS_MAX_RETRY_DELAY = int(value)
+                            elif key == "WS_PING_INTERVAL" and value.isdigit():
+                                WS_PING_INTERVAL = int(value)
+                            elif key == "WS_PING_TIMEOUT" and value.isdigit():
+                                WS_PING_TIMEOUT = int(value)
+                            elif key == "WS_CONNECTION_TIMEOUT" and value.isdigit():
+                                WS_CONNECTION_TIMEOUT = int(value)
+            except Exception as e:
+                return web.json_response({
+                    "status": "error",
+                    "message": f"Fehler beim Laden der Config: {str(e)}"
+                }, status=500)
+        
+        return web.json_response({
+            "status": "success",
+            "message": "Konfiguration wurde neu geladen",
+            "config": {
+                "DB_REFRESH_INTERVAL": DB_REFRESH_INTERVAL,
+                "TRADE_BUFFER_SECONDS": TRADE_BUFFER_SECONDS,
+                "WHALE_THRESHOLD_SOL": WHALE_THRESHOLD_SOL
+            }
+        })
+    except Exception as e:
+        return web.json_response({
+            "status": "error",
+            "message": str(e)
+        }, status=500)
+
 async def start_health_server():
     """Startet den Health-Check Server - muss sofort verfügbar sein"""
     app = web.Application()
     app.add_routes([
         web.get("/health", health_check),
         web.get("/metrics", metrics_handler),
+        web.post("/reload-config", reload_config_handler),  # Reload-Endpoint
         # Coolify-spezifischer Endpoint (manche Versionen erwarten /)
         web.get("/", health_check)
     ])
@@ -156,7 +269,7 @@ async def start_health_server():
         async def middleware_handler(request):
             response = await handler(request)
             response.headers['Access-Control-Allow-Origin'] = '*'
-            response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
             response.headers['Access-Control-Allow-Headers'] = '*'
             return response
         return middleware_handler
@@ -169,6 +282,7 @@ async def start_health_server():
     print(f"🏥 Health-Check Server läuft auf Port {HEALTH_PORT}", flush=True)
     print(f"📊 Prometheus Metrics auf http://localhost:{HEALTH_PORT}/metrics", flush=True)
     print(f"✅ Health-Endpoint verfügbar: http://0.0.0.0:{HEALTH_PORT}/health", flush=True)
+    print(f"🔄 Reload-Config Endpoint: http://0.0.0.0:{HEALTH_PORT}/reload-config", flush=True)
 
 class Tracker:
     def __init__(self):
