@@ -23,51 +23,78 @@ st.set_page_config(
 )
 
 def load_config():
-    """Lädt Konfiguration aus YAML-Datei oder .env"""
-    # Versuche zuerst YAML
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
-            config = yaml.safe_load(f)
-            if config:
-                return config
-    
-    # Fallback: Lade aus .env
-    env_paths = ["/app/.env", "/app/../.env", "/app/config/.env", ".env"]
+    """Lädt Konfiguration aus Environment Variables (Coolify) oder Fallback auf Dateien"""
     config = {}
-    env_file_found = False
     
+    # PRIORITÄT 1: Lade aus Environment Variables (Coolify verwendet diese)
+    env_vars = {
+        'DB_DSN': os.getenv('DB_DSN'),
+        'WS_URI': os.getenv('WS_URI', 'wss://pumpportal.fun/api/data'),
+        'DB_REFRESH_INTERVAL': os.getenv('DB_REFRESH_INTERVAL', '10'),
+        'DB_RETRY_DELAY': os.getenv('DB_RETRY_DELAY', '5'),
+        'WS_RETRY_DELAY': os.getenv('WS_RETRY_DELAY', '3'),
+        'WS_MAX_RETRY_DELAY': os.getenv('WS_MAX_RETRY_DELAY', '60'),
+        'WS_PING_INTERVAL': os.getenv('WS_PING_INTERVAL', '20'),
+        'WS_PING_TIMEOUT': os.getenv('WS_PING_TIMEOUT', '10'),
+        'WS_CONNECTION_TIMEOUT': os.getenv('WS_CONNECTION_TIMEOUT', '30'),
+        'SOL_RESERVES_FULL': os.getenv('SOL_RESERVES_FULL', '85.0'),
+        'AGE_CALCULATION_OFFSET_MIN': os.getenv('AGE_CALCULATION_OFFSET_MIN', '60'),
+        'TRADE_BUFFER_SECONDS': os.getenv('TRADE_BUFFER_SECONDS', '180'),
+        'HEALTH_PORT': os.getenv('HEALTH_PORT', '8000'),
+    }
+    
+    # Konvertiere Environment Variables zu Config-Dict
+    for key, value in env_vars.items():
+        if value is not None:
+            # Konvertiere Zahlen
+            if value.isdigit():
+                config[key] = int(value)
+            else:
+                try:
+                    config[key] = float(value)
+                except:
+                    config[key] = value
+    
+    # Wenn Environment Variables vorhanden sind, verwende diese
+    if config.get('DB_DSN'):
+        return config
+    
+    # FALLBACK: Versuche YAML-Datei
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                file_config = yaml.safe_load(f)
+                if file_config:
+                    # Merge mit Environment Variables (Env hat Priorität)
+                    file_config.update(config)
+                    return file_config
+        except Exception:
+            pass
+    
+    # FALLBACK: Versuche .env Datei
+    env_paths = ["/app/.env", "/app/../.env", "/app/config/.env", ".env"]
     for env_path in env_paths:
         if os.path.exists(env_path):
-            env_file_found = True
-            with open(env_path, 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith('#') and '=' in line:
-                        key, value = line.split('=', 1)
-                        key = key.strip()
-                        value = value.strip()
-                        # Konvertiere Zahlen
-                        if value.isdigit():
-                            config[key] = int(value)
-                        else:
-                            try:
-                                config[key] = float(value)
-                            except:
-                                config[key] = value
-            break
+            try:
+                with open(env_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#') and '=' in line:
+                            key, value = line.split('=', 1)
+                            key = key.strip()
+                            value = value.strip()
+                            if key not in config:  # Nur wenn nicht bereits aus Env-Vars
+                                if value.isdigit():
+                                    config[key] = int(value)
+                                else:
+                                    try:
+                                        config[key] = float(value)
+                                    except:
+                                        config[key] = value
+            except Exception:
+                continue
     
-    # Wenn keine Config-Datei gefunden wurde, erstelle .env mit Default-Werten
-    if not env_file_found and not config:
-        default_config = get_default_config()
-        # Versuche Config zu speichern, aber fahre fort auch wenn es fehlschlägt (z.B. read-only FS)
-        try:
-            save_config(default_config)
-        except (OSError, PermissionError) as e:
-            # Wenn das Dateisystem read-only ist, verwende einfach die Default-Config
-            print(f"⚠️ Konnte Config nicht speichern (read-only?): {e}", flush=True)
-        return default_config
-    
-    # Wenn Config aus .env geladen wurde, aber leer ist, verwende Defaults
+    # Wenn nichts gefunden wurde, verwende Defaults
     if not config:
         return get_default_config()
     
@@ -496,7 +523,14 @@ with tab2:
         print(f"⚠️ Fehler beim Laden der Config: {e}. Verwende Default-Config.", flush=True)
         config = get_default_config()
     
-    st.info("💡 Änderungen werden in der Konfigurationsdatei gespeichert. Ein Service-Neustart ist erforderlich, damit die Änderungen wirksam werden.")
+    # Prüfe ob Environment Variables verwendet werden (Coolify)
+    using_env_vars = bool(os.getenv('DB_DSN'))
+    
+    if using_env_vars:
+        st.warning("⚠️ **Coolify-Modus:** Die Konfiguration wird über Environment Variables verwaltet. Änderungen müssen in der Coolify Web-UI gemacht werden, nicht hier!")
+        st.info("💡 Gehe zu deiner Coolify-Anwendung → Environment Variables, um die Einstellungen zu ändern. Nach Änderungen muss die Anwendung neu deployed werden.")
+    else:
+        st.info("💡 Änderungen werden in der Konfigurationsdatei gespeichert. Ein Service-Neustart ist erforderlich, damit die Änderungen wirksam werden.")
     
     with st.form("config_form"):
         st.subheader("🗄️ Datenbank Einstellungen")
@@ -532,9 +566,12 @@ with tab2:
         
         col1, col2 = st.columns(2)
         with col1:
-            save_button = st.form_submit_button("💾 Konfiguration speichern", type="primary")
+            save_button = st.form_submit_button("💾 Konfiguration speichern", type="primary", disabled=using_env_vars)
         with col2:
-            reset_button = st.form_submit_button("🔄 Auf Standard zurücksetzen")
+            reset_button = st.form_submit_button("🔄 Auf Standard zurücksetzen", disabled=using_env_vars)
+        
+        if using_env_vars:
+            st.warning("⚠️ **Speichern deaktiviert:** In Coolify müssen Änderungen über Environment Variables in der Coolify Web-UI gemacht werden!")
         
         if save_button:
             # Validierung vor dem Speichern
@@ -559,11 +596,18 @@ with tab2:
                 for error in errors:
                     st.error(f"  - {error}")
             else:
-                result = save_config(config)
-                if result:
-                    st.session_state.config_saved = True
-                    st.success("✅ Konfiguration gespeichert!")
-                    st.warning("⚠️ **WICHTIG:** Die `.env` Datei wurde aktualisiert. Bitte Tracker-Service neu starten, damit die Änderungen wirksam werden!")
+                if using_env_vars:
+                    st.error("❌ **Fehler:** In Coolify können Konfigurationen nicht über die UI gespeichert werden. Bitte verwende die Coolify Web-UI → Environment Variables.")
+                else:
+                    try:
+                        result = save_config(config)
+                        if result:
+                            st.session_state.config_saved = True
+                            st.success("✅ Konfiguration gespeichert!")
+                            st.warning("⚠️ **WICHTIG:** Die `.env` Datei wurde aktualisiert. Bitte Tracker-Service neu starten, damit die Änderungen wirksam werden!")
+                    except (OSError, PermissionError) as e:
+                        st.error(f"❌ **Fehler beim Speichern:** {e}")
+                        st.info("💡 Das Dateisystem ist möglicherweise read-only. In Coolify verwende bitte Environment Variables in der Web-UI.")
         
         if reset_button:
             default_config = get_default_config()
