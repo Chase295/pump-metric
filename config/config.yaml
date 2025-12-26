@@ -1,0 +1,29 @@
+# ============================================================================
+# PUMP METRIC - Konfigurationsdatei
+# ============================================================================
+# Diese Datei wird von der Streamlit UI verwaltet.
+# Änderungen werden automatisch in .env gespeichert.
+# ============================================================================
+
+# Datenbank Einstellungen
+DB_DSN: "postgresql://postgres:9HVxi6hN6j7xpmqUx84o@100.118.155.75:5432/crypto"
+
+# WebSocket Einstellungen
+WS_URI: "wss://pumpportal.fun/api/data"
+WS_RETRY_DELAY: 3
+WS_MAX_RETRY_DELAY: 60
+WS_PING_INTERVAL: 20
+WS_PING_TIMEOUT: 10
+WS_CONNECTION_TIMEOUT: 30
+
+# Datenbank Refresh Einstellungen
+DB_REFRESH_INTERVAL: 10
+DB_RETRY_DELAY: 5
+
+# Tracker Einstellungen
+SOL_RESERVES_FULL: 85.0
+AGE_CALCULATION_OFFSET_MIN: 60
+
+# Health-Check Port (intern, wird auf externen Port 8011 gemappt)
+HEALTH_PORT: 8000
+

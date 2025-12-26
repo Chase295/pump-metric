@@ -1,0 +1,45 @@
+# Coolify Konfiguration für pump-metric
+# Coolify erkennt automatisch docker-compose.yml und verwendet diese Services
+
+services:
+  tracker:
+    build:
+      context: ./tracker
+      dockerfile: Dockerfile
+    environment:
+      - DB_DSN=${DB_DSN}
+      - WS_URI=${WS_URI:-wss://pumpportal.fun/api/data}
+      - DB_REFRESH_INTERVAL=${DB_REFRESH_INTERVAL:-10}
+      - SOL_RESERVES_FULL=${SOL_RESERVES_FULL:-85.0}
+      - AGE_CALCULATION_OFFSET_MIN=${AGE_CALCULATION_OFFSET_MIN:-60}
+      - TRADE_BUFFER_SECONDS=${TRADE_BUFFER_SECONDS:-180}
+      - DB_RETRY_DELAY=${DB_RETRY_DELAY:-5}
+      - WS_RETRY_DELAY=${WS_RETRY_DELAY:-3}
+      - WS_MAX_RETRY_DELAY=${WS_MAX_RETRY_DELAY:-60}
+      - WS_PING_INTERVAL=${WS_PING_INTERVAL:-20}
+      - WS_PING_TIMEOUT=${WS_PING_TIMEOUT:-10}
+      - WS_CONNECTION_TIMEOUT=${WS_CONNECTION_TIMEOUT:-30}
+      - HEALTH_PORT=${HEALTH_PORT:-8000}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    environment:
+      - TRACKER_SERVICE=tracker
+      - TRACKER_PORT=8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - tracker
+    restart: unless-stopped
+
