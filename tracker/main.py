@@ -879,10 +879,19 @@ class Tracker:
                 # Detailliertes Logging
                 print(f"💾 Saved metrics for {len(batch_data)} coins ({details})", flush=True)
                 
-                # Zeige Details für die ersten 3 Coins als Beispiel
+                # Zeige Details für die ersten 3 Coins als Beispiel (inkl. erweiterte Metriken)
                 for i, (mint, timestamp, phase_id, *rest) in enumerate(batch_data[:3]):
                     mint_short = mint[:8] + "..." if len(mint) > 8 else mint
-                    print(f"   ✓ {mint_short} - Phase {phase_id} - {timestamp.strftime('%H:%M:%S')}", flush=True)
+                    # rest enthält: price_open, price_high, ..., max_single_sell_sol, net_volume_sol, volatility_pct, ...
+                    if len(rest) >= 27:  # Mindestens 27 Werte (inkl. neue Metriken)
+                        net_vol = rest[20] if len(rest) > 20 else 0  # net_volume_sol
+                        volatility = rest[21] if len(rest) > 21 else 0  # volatility_pct
+                        avg_trade = rest[22] if len(rest) > 22 else 0  # avg_trade_size_sol
+                        whale_buys = rest[25] if len(rest) > 25 else 0  # num_whale_buys
+                        whale_sells = rest[26] if len(rest) > 26 else 0  # num_whale_sells
+                        print(f"   ✓ {mint_short} - Phase {phase_id} - {timestamp.strftime('%H:%M:%S')} | Net: {net_vol:.2f} SOL | Vol: {volatility:.1f}% | Whales: {whale_buys}B/{whale_sells}S", flush=True)
+                    else:
+                        print(f"   ✓ {mint_short} - Phase {phase_id} - {timestamp.strftime('%H:%M:%S')}", flush=True)
                 
                 if len(batch_data) > 3:
                     print(f"   ... und {len(batch_data) - 3} weitere Coins", flush=True)

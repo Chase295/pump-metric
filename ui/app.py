@@ -487,6 +487,13 @@ with tab1:
             st.write(f"- Gesamt Trades: {health.get('total_trades', 0)}")
             st.write(f"- Gesamt Metriken: {health.get('total_metrics_saved', 0)}")
             
+            # NEU: Erweiterte Metriken-Info
+            st.write("**Erweiterte Metriken:**")
+            st.write("✅ Whale-Tracking aktiv")
+            st.write("✅ Volatilität wird berechnet")
+            st.write("✅ Netto-Volumen wird berechnet")
+            st.write("✅ Durchschnittliche Trade-Größe wird berechnet")
+            
             # Buffer-Statistiken aus Health-Endpoint
             buffer_stats = health.get('buffer_stats', {})
             if buffer_stats:
@@ -796,7 +803,44 @@ with tab4:
                     st.metric(metric.replace('tracker_', '').replace('_', ' ').title(), metrics_dict[metric])
                 col_idx += 1
         
+        # NEU: Erweiterte Metriken-Info
+        st.divider()
+        st.subheader("📊 Erweiterte Metriken (aus coin_metrics)")
+        
+        st.info("""
+        💡 **Hinweis**: Die erweiterten Metriken (Whale-Tracking, Volatilität, Netto-Volumen, etc.) 
+        werden in der Datenbank gespeichert und können über SQL-Abfragen abgerufen werden.
+        
+        **Verfügbare Metriken**:
+        - `net_volume_sol`: Netto-Volumen (Delta: Buy - Sell)
+        - `volatility_pct`: Volatilität in Prozent
+        - `avg_trade_size_sol`: Durchschnittliche Trade-Größe
+        - `whale_buy_volume_sol`: Whale-Buy-Volumen
+        - `whale_sell_volume_sol`: Whale-Sell-Volumen
+        - `num_whale_buys`: Anzahl Whale-Buys
+        - `num_whale_sells`: Anzahl Whale-Sells
+        """)
+        
+        st.markdown("""
+        **Beispiel-SQL-Abfrage**:
+        ```sql
+        SELECT 
+            mint,
+            timestamp,
+            net_volume_sol,
+            volatility_pct,
+            avg_trade_size_sol,
+            whale_buy_volume_sol,
+            num_whale_buys
+        FROM coin_metrics
+        WHERE timestamp >= NOW() - INTERVAL '1 hour'
+        ORDER BY timestamp DESC
+        LIMIT 10;
+        ```
+        """)
+        
         # Vollständige Metriken
+        st.divider()
         st.subheader("📄 Vollständige Metriken (Raw)")
         st.code(metrics, language="text")
     else:
@@ -1855,6 +1899,52 @@ is_koth = market_cap_close > 30000  # SOL
     st.markdown("""
     **KOTH** bedeutet, dass der Coin eine Market Cap von über 30.000 SOL hat und damit 
     in der Pump.fun "King of the Hill" Liste erscheint (Sichtbarkeits-Boost).
+    """)
+    
+    st.subheader("Erweiterte Metriken (Neu)")
+    
+    st.markdown("""
+    Zusätzlich werden folgende erweiterte Metriken berechnet:
+    """)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.code("""
+# Netto-Volumen (Delta)
+net_volume_sol = buy_volume_sol - sell_volume_sol
+
+# Volatilität
+if price_open > 0:
+    volatility_pct = ((price_high - price_low) / price_open) * 100
+else:
+    volatility_pct = 0.0
+
+# Durchschnittliche Trade-Größe
+total_trades = num_buys + num_sells
+if total_trades > 0:
+    avg_trade_size_sol = volume_sol / total_trades
+else:
+    avg_trade_size_sol = 0.0
+        """, language="python")
+    
+    with col2:
+        st.code("""
+# Whale-Tracking (während process_trade)
+if sol_amount >= WHALE_THRESHOLD_SOL:  # Standard: 1.0 SOL
+    if is_buy:
+        whale_buy_volume_sol += sol_amount
+        num_whale_buys += 1
+    else:
+        whale_sell_volume_sol += sol_amount
+        num_whale_sells += 1
+        """, language="python")
+    
+    st.info("""
+    💡 **Wichtig**: 
+    - Alle Berechnungen basieren auf **echten Trade-Daten** aus dem Buffer
+    - Keine erfundenen Zahlen - alle Werte werden aus tatsächlichen Trades berechnet
+    - Edge Cases werden korrekt behandelt (Division durch 0, etc.)
     """)
     
     st.divider()
