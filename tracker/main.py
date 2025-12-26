@@ -146,7 +146,9 @@ async def start_health_server():
     app = web.Application()
     app.add_routes([
         web.get("/health", health_check),
-        web.get("/metrics", metrics_handler)
+        web.get("/metrics", metrics_handler),
+        # Coolify-spezifischer Endpoint (manche Versionen erwarten /)
+        web.get("/", health_check)
     ])
     runner = web.AppRunner(app)
     await runner.setup()
