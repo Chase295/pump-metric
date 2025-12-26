@@ -150,6 +150,13 @@ class Tracker:
                 if self.pool:
                     await self.pool.close()
                 self.pool = await asyncpg.create_pool(DB_DSN, min_size=1, max_size=10)
+                
+                # Automatische Schema-Migration beim Start
+                print("🔍 Prüfe und aktualisiere Datenbank-Schema...", flush=True)
+                schema_ok = await check_and_create_schema(self.pool)
+                if not schema_ok:
+                    print("⚠️  Schema-Check fehlgeschlagen, aber Verbindung funktioniert", flush=True)
+                
                 rows = await self.pool.fetch("SELECT * FROM ref_coin_phases ORDER BY id ASC")
                 self.phases_config = {}
                 for row in rows:

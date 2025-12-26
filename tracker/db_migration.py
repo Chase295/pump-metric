@@ -29,6 +29,8 @@ async def check_and_create_schema(pool=None):
         
     except Exception as e:
         print(f"❌ Fehler beim Schema-Check: {e}", flush=True)
+        import traceback
+        print(traceback.format_exc(), flush=True)
         return False
 
 async def _check_schema(conn):
