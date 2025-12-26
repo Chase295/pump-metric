@@ -266,8 +266,19 @@ def restart_service():
             except docker.errors.NotFound:
                 continue
         
+        # Falls nicht gefunden: Suche nach Containern mit "tracker" im Namen
         if not container:
-            return False, "Container 'pump-metric-tracker' nicht gefunden"
+            try:
+                all_containers = client.containers.list(all=True)
+                for cont in all_containers:
+                    if "tracker" in cont.name.lower():
+                        container = cont
+                        break
+            except Exception:
+                pass
+        
+        if not container:
+            return False, "Tracker-Container nicht gefunden. Bitte prüfe ob der Service läuft."
         
         # Stoppe Container
         container.stop(timeout=10)
@@ -332,9 +343,12 @@ def get_service_logs(lines=100):
     try:
         import docker
         client = docker.from_env()
+        
         # Versuche verschiedene Container-Namen
         container_names = ["pump-metric-tracker", "tracker", TRACKER_SERVICE]
         container = None
+        
+        # Zuerst: Versuche direkte Container-Namen
         for name in container_names:
             try:
                 container = client.containers.get(name)
@@ -342,9 +356,20 @@ def get_service_logs(lines=100):
             except docker.errors.NotFound:
                 continue
             except Exception as e:
-                # Log den Fehler für Debugging
                 print(f"Fehler beim Zugriff auf Container {name}: {e}", flush=True)
                 continue
+        
+        # Falls nicht gefunden: Suche nach Containern mit "tracker" im Namen
+        if not container:
+            try:
+                all_containers = client.containers.list(all=True)
+                for cont in all_containers:
+                    # Suche nach Containern die "tracker" im Namen haben
+                    if "tracker" in cont.name.lower() or "tracker" in (cont.name or "").lower():
+                        container = cont
+                        break
+            except Exception as e:
+                print(f"Fehler beim Durchsuchen der Container: {e}", flush=True)
         
         if container:
             try:
@@ -356,7 +381,13 @@ def get_service_logs(lines=100):
             except Exception as e:
                 return f"Fehler beim Lesen der Logs: {str(e)}"
         else:
-            return "❌ Container 'pump-metric-tracker' nicht gefunden. Bitte prüfe ob der Service läuft."
+            # Liste alle verfügbaren Container für Debugging
+            try:
+                all_containers = client.containers.list(all=True)
+                container_list = [c.name for c in all_containers[:10]]  # Erste 10
+                return f"❌ Tracker-Container nicht gefunden.\n\nVerfügbare Container (erste 10): {', '.join(container_list)}\n\nBitte prüfe ob der Tracker-Service läuft."
+            except:
+                return "❌ Tracker-Container nicht gefunden. Bitte prüfe ob der Service läuft."
     except ImportError:
         # Fallback: Docker Python Client nicht verfügbar - versuche über docker compose
         import subprocess
