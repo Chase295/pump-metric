@@ -53,7 +53,6 @@ services:
       - "0.0.0.0:${UI_PORT:-8499}:8501"
     volumes:
       - ./config:/app/config:rw
-      - ./.env:/app/.env:rw
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - pump-metric-network
