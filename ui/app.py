@@ -616,20 +616,6 @@ with tab2:
             st.warning("⚠️ **Speichern deaktiviert:** In Coolify müssen Änderungen über Environment Variables in der Coolify Web-UI gemacht werden!")
             st.info("💡 **Alternative:** Du kannst die Konfiguration trotzdem speichern und dann über den 'Konfiguration neu laden' Button übernehmen (funktioniert auch in Coolify).")
         
-        # Reload-Button (immer sichtbar, auch wenn Config nicht gespeichert wurde)
-        st.divider()
-        st.subheader("🔄 Konfiguration neu laden")
-        st.caption("Lädt die gespeicherte Konfiguration im Tracker-Service neu (ohne Neustart)")
-        if st.button("🔄 Konfiguration neu laden", type="primary", key="reload_config_button"):
-            with st.spinner("Konfiguration wird neu geladen..."):
-                success, message = reload_tracker_config()
-                if success:
-                    st.success(f"✅ {message}")
-                    st.info("💡 Die neue Konfiguration ist jetzt aktiv! Kein Neustart nötig.")
-                else:
-                    st.error(f"❌ {message}")
-                    st.info("💡 Falls der Reload fehlschlägt, starte den Tracker-Service manuell neu.")
-        
         if save_button:
             # Validierung vor dem Speichern
             errors = []
@@ -662,17 +648,7 @@ with tab2:
                             st.session_state.config_saved = True
                             st.success("✅ Konfiguration gespeichert!")
                             
-                            # Zeige Reload-Button
-                            st.info("💡 **Tipp:** Du kannst die Konfiguration jetzt ohne Neustart übernehmen!")
-                            if st.button("🔄 Konfiguration neu laden (ohne Neustart)", type="primary", key="reload_after_save"):
-                                with st.spinner("Konfiguration wird neu geladen..."):
-                                    success, message = reload_tracker_config()
-                                    if success:
-                                        st.success(f"✅ {message}")
-                                        st.balloons()
-                                    else:
-                                        st.error(f"❌ {message}")
-                                        st.info("💡 Falls der Reload fehlschlägt, starte den Tracker-Service manuell neu.")
+                            st.info("💡 **Tipp:** Du kannst die Konfiguration jetzt ohne Neustart übernehmen! Nutze den 'Konfiguration neu laden' Button unten.")
                     except (OSError, PermissionError) as e:
                         st.error(f"❌ **Fehler beim Speichern:** {e}")
                         st.info("💡 Das Dateisystem ist möglicherweise read-only. In Coolify verwende bitte Environment Variables in der Web-UI.")
