@@ -13,6 +13,7 @@ from prometheus_client import Counter as PromCounter, Gauge, Histogram, generate
 from db_migration import check_and_create_schema
 
 # --- KONFIGURATION ---
+# Werte werden zuerst aus Environment Variables geladen, dann aus .env Datei überschrieben
 DB_DSN = os.getenv("DB_DSN", "postgresql://postgres:9HVxi6hN6j7xpmqUx84o@100.118.155.75:5432/crypto")
 WS_URI = os.getenv("WS_URI", "wss://pumpportal.fun/api/data")
 DB_REFRESH_INTERVAL = int(os.getenv("DB_REFRESH_INTERVAL", "10"))
@@ -27,6 +28,69 @@ WS_CONNECTION_TIMEOUT = int(os.getenv("WS_CONNECTION_TIMEOUT", "30"))
 HEALTH_PORT = int(os.getenv("HEALTH_PORT", "8000"))
 TRADE_BUFFER_SECONDS = int(os.getenv("TRADE_BUFFER_SECONDS", "180"))  # 180 Sekunden (3 Minuten) Buffer für verpasste Trades
 WHALE_THRESHOLD_SOL = float(os.getenv("WHALE_THRESHOLD_SOL", "1.0"))  # Schwellenwert für Whale-Trades (Standard: 1.0 SOL)
+
+def load_config_from_file():
+    """Lädt Konfiguration aus .env Datei (im geteilten Volume) - überschreibt Environment Variables"""
+    global DB_DSN, WS_URI, DB_REFRESH_INTERVAL, SOL_RESERVES_FULL, AGE_CALCULATION_OFFSET_MIN
+    global TRADE_BUFFER_SECONDS, WHALE_THRESHOLD_SOL, DB_RETRY_DELAY, WS_RETRY_DELAY
+    global WS_MAX_RETRY_DELAY, WS_PING_INTERVAL, WS_PING_TIMEOUT, WS_CONNECTION_TIMEOUT
+    
+    config_file = "/app/config/.env"
+    if os.path.exists(config_file):
+        try:
+            print(f"📄 Lade Konfiguration aus {config_file}...", flush=True)
+            with open(config_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        key = key.strip()
+                        value = value.strip().strip('"').strip("'")
+                        
+                        # Überschreibe globale Variablen (nur wenn Wert nicht leer)
+                        if value:
+                            if key == "DB_DSN":
+                                DB_DSN = value
+                            elif key == "WS_URI":
+                                WS_URI = value
+                            elif key == "DB_REFRESH_INTERVAL" and value.isdigit():
+                                DB_REFRESH_INTERVAL = int(value)
+                            elif key == "SOL_RESERVES_FULL":
+                                try:
+                                    SOL_RESERVES_FULL = float(value)
+                                except:
+                                    pass
+                            elif key == "AGE_CALCULATION_OFFSET_MIN" and value.isdigit():
+                                AGE_CALCULATION_OFFSET_MIN = int(value)
+                            elif key == "TRADE_BUFFER_SECONDS" and value.isdigit():
+                                TRADE_BUFFER_SECONDS = int(value)
+                            elif key == "WHALE_THRESHOLD_SOL":
+                                try:
+                                    WHALE_THRESHOLD_SOL = float(value)
+                                except:
+                                    pass
+                            elif key == "DB_RETRY_DELAY" and value.isdigit():
+                                DB_RETRY_DELAY = int(value)
+                            elif key == "WS_RETRY_DELAY" and value.isdigit():
+                                WS_RETRY_DELAY = int(value)
+                            elif key == "WS_MAX_RETRY_DELAY" and value.isdigit():
+                                WS_MAX_RETRY_DELAY = int(value)
+                            elif key == "WS_PING_INTERVAL" and value.isdigit():
+                                WS_PING_INTERVAL = int(value)
+                            elif key == "WS_PING_TIMEOUT" and value.isdigit():
+                                WS_PING_TIMEOUT = int(value)
+                            elif key == "WS_CONNECTION_TIMEOUT" and value.isdigit():
+                                WS_CONNECTION_TIMEOUT = int(value)
+                            elif key == "HEALTH_PORT" and value.isdigit():
+                                HEALTH_PORT = int(value)
+            print(f"✅ Konfiguration aus {config_file} geladen", flush=True)
+        except Exception as e:
+            print(f"⚠️  Fehler beim Laden der Config-Datei {config_file}: {e}", flush=True)
+    else:
+        print(f"ℹ️  Config-Datei {config_file} nicht gefunden, verwende Environment Variables", flush=True)
+
+# Lade Config beim Start (nach Environment Variables)
+load_config_from_file()
 
 # ZEITZONEN
 GERMAN_TZ = ZoneInfo("Europe/Berlin")
@@ -192,51 +256,13 @@ async def health_check(request):
 async def reload_config_handler(request):
     """Lädt die Konfiguration neu (ohne Neustart)"""
     try:
-        global DB_REFRESH_INTERVAL, SOL_RESERVES_FULL, AGE_CALCULATION_OFFSET_MIN
-        global TRADE_BUFFER_SECONDS, WHALE_THRESHOLD_SOL
-        global DB_RETRY_DELAY, WS_RETRY_DELAY, WS_MAX_RETRY_DELAY
-        global WS_PING_INTERVAL, WS_PING_TIMEOUT, WS_CONNECTION_TIMEOUT
+        # Verwende die gleiche Funktion wie beim Start
+        load_config_from_file()
         
-        # Lade Config aus .env Datei (im geteilten Volume)
-        config_file = "/app/config/.env"
-        if os.path.exists(config_file):
-            try:
-                with open(config_file, 'r') as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith('#') and '=' in line:
-                            key, value = line.split('=', 1)
-                            key = key.strip()
-                            value = value.strip().strip('"').strip("'")
-                            
-                            # Überschreibe globale Variablen
-                            if key == "DB_REFRESH_INTERVAL" and value.isdigit():
-                                DB_REFRESH_INTERVAL = int(value)
-                            elif key == "SOL_RESERVES_FULL":
-                                SOL_RESERVES_FULL = float(value)
-                            elif key == "AGE_CALCULATION_OFFSET_MIN" and value.isdigit():
-                                AGE_CALCULATION_OFFSET_MIN = int(value)
-                            elif key == "TRADE_BUFFER_SECONDS" and value.isdigit():
-                                TRADE_BUFFER_SECONDS = int(value)
-                            elif key == "WHALE_THRESHOLD_SOL":
-                                WHALE_THRESHOLD_SOL = float(value)
-                            elif key == "DB_RETRY_DELAY" and value.isdigit():
-                                DB_RETRY_DELAY = int(value)
-                            elif key == "WS_RETRY_DELAY" and value.isdigit():
-                                WS_RETRY_DELAY = int(value)
-                            elif key == "WS_MAX_RETRY_DELAY" and value.isdigit():
-                                WS_MAX_RETRY_DELAY = int(value)
-                            elif key == "WS_PING_INTERVAL" and value.isdigit():
-                                WS_PING_INTERVAL = int(value)
-                            elif key == "WS_PING_TIMEOUT" and value.isdigit():
-                                WS_PING_TIMEOUT = int(value)
-                            elif key == "WS_CONNECTION_TIMEOUT" and value.isdigit():
-                                WS_CONNECTION_TIMEOUT = int(value)
-            except Exception as e:
-                return web.json_response({
-                    "status": "error",
-                    "message": f"Fehler beim Laden der Config: {str(e)}"
-                }, status=500)
+        print(f"🔄 Konfiguration neu geladen:", flush=True)
+        print(f"  - DB_REFRESH_INTERVAL: {DB_REFRESH_INTERVAL}s", flush=True)
+        print(f"  - TRADE_BUFFER_SECONDS: {TRADE_BUFFER_SECONDS}s", flush=True)
+        print(f"  - WHALE_THRESHOLD_SOL: {WHALE_THRESHOLD_SOL}", flush=True)
         
         return web.json_response({
             "status": "success",
