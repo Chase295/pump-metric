@@ -2008,6 +2008,11 @@ if sol_amount >= WHALE_THRESHOLD_SOL:  # Standard: 1.0 SOL
         - `whale_sell_volume_sol`: Whale-Sell-Volumen
         - `num_whale_buys`: Anzahl Whale-Buys
         - `num_whale_sells`: Anzahl Whale-Sells
+        - `buy_pressure_ratio`: Buy-Volumen-Verhältnis [0.0-1.0]
+        - `unique_signer_ratio`: Unique-Wallet-Verhältnis [0.0-1.0]
+        
+        **KRITISCH - Dev-Tracking**:
+        - `dev_sold_amount`: **JETZT IMPLEMENTIERT!** Verkauftes Volumen vom Creator (Rug-Pull-Erkennung)
         """)
     
     st.divider()
@@ -2152,6 +2157,98 @@ if sol_amount >= WHALE_THRESHOLD_SOL:  # Standard: 1.0 SOL
     - Whale-Tracking erfolgt **während** der Trade-Verarbeitung (kein zusätzlicher Loop)
     - Schwellenwert ist konfigurierbar über `WHALE_THRESHOLD_SOL` (Standard: 1.0 SOL)
     - Alle Werte basieren auf **echten Trade-Daten** (keine erfundenen Zahlen)
+    """)
+    
+    st.subheader("📊 Buy Pressure Ratio")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **Berechnung**:
+        ```
+        buy_pressure_ratio = buy_volume / (buy_volume + sell_volume)
+        ```
+        
+        **Interpretation**:
+        - **0.0**: Nur Sells (100% Verkaufsdruck)
+        - **0.5**: Ausgewogen (50% Buy, 50% Sell)
+        - **1.0**: Nur Buys (100% Kaufdruck)
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Beispiel**:
+        - `buy_volume = 10 SOL`
+        - `sell_volume = 90 SOL`
+        - `buy_pressure_ratio = 0.1` ⚠️ (Starker Verkaufsdruck)
+        
+        **Warum wichtig**:
+        - 10 SOL Buy bei 100 SOL Volumen = 0.1 (schlecht)
+        - 10 SOL Buy bei 12 SOL Volumen = 0.83 (gut)
+        - Relative Metrik ist aussagekräftiger als absolute Zahlen
+        """)
+    
+    st.subheader("👥 Unique Signer Ratio")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **Berechnung**:
+        ```
+        unique_signer_ratio = unique_wallets / (num_buys + num_sells)
+        ```
+        
+        **Interpretation**:
+        - **Niedrig (< 0.1)**: Wash-Trading (wenige Wallets, viele Trades)
+        - **Mittel (0.1-0.5)**: Gemischte Aktivität
+        - **Hoch (> 0.5)**: Organisches Wachstum (viele verschiedene Trader)
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Beispiel**:
+        - `unique_wallets = 2`
+        - `total_trades = 100`
+        - `unique_signer_ratio = 0.02` ⚠️ (Wash-Trading!)
+        
+        **Warum wichtig**:
+        - Identifikation von Bot-Spam vs. echtem Interesse
+        - Niedrige Ratio = Fake-Volumen
+        - Hohe Ratio = Organisches Wachstum
+        """)
+    
+    st.subheader("⚠️ Dev-Tracking (KRITISCH für Rug-Pull-Erkennung)")
+    
+    st.markdown("""
+    **Problem**: Wenn der Creator (Developer) seine Tokens verkauft, ist das ein starker Indikator für einen möglichen Rug-Pull.
+    
+    **Lösung**: Das System prüft bei jedem Sell-Trade, ob die `traderPublicKey` mit der `trader_public_key` aus `discovered_coins` übereinstimmt.
+    """)
+    
+    st.code("""
+    # Dev-Wallet-Erkennung während Trade-Verarbeitung
+    creator_address = entry["meta"]["creator_address"]  # Aus discovered_coins.trader_public_key
+    trader_key = data["traderPublicKey"]
+    
+    if not is_buy and creator_address and trader_key == creator_address:
+        buf["dev_sold_amount"] += sol_amount  # KRITISCH: Dev hat verkauft!
+    """, language="python")
+    
+    st.warning("""
+    ⚠️ **KRITISCH**: 
+    - `dev_sold_amount` war vorher immer 0 (nicht implementiert)
+    - **JETZT IMPLEMENTIERT**: Dev-Verkäufe werden korrekt getrackt
+    - Für KI-Modelle ist dies der **wichtigste Indikator** für Rug-Pull-Risiko
+    - Wenn `dev_sold_amount > 0`, hat der Creator verkauft → **Höheres Risiko**
+    """)
+    
+    st.info("""
+    💡 **Datenquelle**: 
+    - Die Creator-Wallet (`trader_public_key`) wird aus `discovered_coins` geladen
+    - Bei jedem Sell-Trade wird geprüft: `traderPublicKey == creator_address`
+    - Nur Sell-Trades vom Creator werden gezählt (Buy-Trades sind normal)
     """)
     
     st.divider()

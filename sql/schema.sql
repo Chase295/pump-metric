@@ -42,7 +42,11 @@ CREATE TABLE coin_metrics (
     whale_buy_volume_sol NUMERIC(24, 9) DEFAULT 0,    -- Volumen von Trades >= 1 SOL (Buy)
     whale_sell_volume_sol NUMERIC(24, 9) DEFAULT 0,    -- Volumen von Trades >= 1 SOL (Sell)
     num_whale_buys INTEGER DEFAULT 0,                  -- Anzahl Whale-Buys
-    num_whale_sells INTEGER DEFAULT 0                  -- Anzahl Whale-Sells
+    num_whale_sells INTEGER DEFAULT 0,                 -- Anzahl Whale-Sells
+    
+    -- 7. ERWEITERTE RATIOS (Bot-Spam vs. echtes Interesse)
+    buy_pressure_ratio NUMERIC(5, 4) DEFAULT 0,       -- buy_volume / (buy_volume + sell_volume) [0.0-1.0]
+    unique_signer_ratio NUMERIC(5, 4) DEFAULT 0       -- unique_wallets / (num_buys + num_sells) [0.0-1.0]
 );
 
 CREATE INDEX idx_metrics_mint_time ON coin_metrics(mint, timestamp);

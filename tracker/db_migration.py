@@ -100,11 +100,13 @@ async def _check_schema(conn):
                 'virtual_sol_reserves', 'is_koth', 'volume_sol', 'buy_volume_sol',
                 'sell_volume_sol', 'num_buys', 'num_sells', 'unique_wallets',
                 'num_micro_trades', 'dev_sold_amount', 'max_single_buy_sol', 'max_single_sell_sol',
-                # NEU: Erweiterte Metriken
-                'net_volume_sol', 'volatility_pct', 'avg_trade_size_sol',
-                'whale_buy_volume_sol', 'whale_sell_volume_sol',
-                'num_whale_buys', 'num_whale_sells'
-            }
+                        # NEU: Erweiterte Metriken
+                        'net_volume_sol', 'volatility_pct', 'avg_trade_size_sol',
+                        'whale_buy_volume_sol', 'whale_sell_volume_sol',
+                        'num_whale_buys', 'num_whale_sells',
+                        # NEU: Ratio-Metriken
+                        'buy_pressure_ratio', 'unique_signer_ratio'
+                    }
             
             missing_columns = required_columns - existing_columns
             if missing_columns:
@@ -115,7 +117,8 @@ async def _check_schema(conn):
                         continue  # Primary Key wird nicht nachträglich hinzugefügt
                     elif col in ['dev_sold_amount', 'max_single_buy_sol', 'max_single_sell_sol', 
                                   'net_volume_sol', 'volatility_pct', 'avg_trade_size_sol',
-                                  'whale_buy_volume_sol', 'whale_sell_volume_sol']:
+                                  'whale_buy_volume_sol', 'whale_sell_volume_sol',
+                                  'buy_pressure_ratio', 'unique_signer_ratio']:
                         await conn.execute(f"ALTER TABLE coin_metrics ADD COLUMN IF NOT EXISTS {col} NUMERIC DEFAULT 0;")
                     elif col == 'is_koth':
                         await conn.execute(f"ALTER TABLE coin_metrics ADD COLUMN IF NOT EXISTS {col} BOOLEAN DEFAULT FALSE;")

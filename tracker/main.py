@@ -196,7 +196,7 @@ class Tracker:
                 
                 # Dann: Hole aktive Streams
                 sql = """
-                    SELECT cs.token_address, cs.current_phase_id, dc.token_created_at, cs.started_at
+                    SELECT cs.token_address, cs.current_phase_id, dc.token_created_at, cs.started_at, dc.trader_public_key
                     FROM coin_streams cs
                     JOIN discovered_coins dc ON cs.token_address = dc.token_address
                     WHERE cs.is_active = TRUE
@@ -213,7 +213,8 @@ class Tracker:
                     results[mint] = {
                         "phase_id": row["current_phase_id"],
                         "created_at": created_at,
-                        "started_at": started_at or created_at
+                        "started_at": started_at or created_at,
+                        "creator_address": row.get("trader_public_key")  # Dev-Wallet für Rug-Pull-Erkennung
                     }
                 
                 # Prüfe auf Lücken (nur alle 60 Sekunden, um Performance zu schonen)
@@ -289,7 +290,9 @@ class Tracker:
             "whale_buy_vol": 0,
             "whale_sell_vol": 0,
             "whale_buys": 0,
-            "whale_sells": 0
+            "whale_sells": 0,
+            # NEU: Dev-Tracking (Rug-Pull-Erkennung)
+            "dev_sold_amount": 0
         }
 
     async def run_new_token_listener(self, subscribe_queue):
@@ -729,6 +732,7 @@ class Tracker:
             sol = float(data["solAmount"])
             price = float(data["vSolInBondingCurve"]) / float(data["vTokensInBondingCurve"])
             is_buy = data["txType"] == "buy"
+            trader_key = data.get("traderPublicKey", "")
         except: return
         if buf["open"] is None: buf["open"] = price
         buf["close"] = price
@@ -751,8 +755,12 @@ class Tracker:
             if sol >= WHALE_THRESHOLD_SOL:
                 buf["whale_sell_vol"] += sol
                 buf["whale_sells"] += 1
+            # KRITISCH: Dev-Tracking (Rug-Pull-Erkennung)
+            creator_address = entry["meta"].get("creator_address")
+            if creator_address and trader_key and trader_key == creator_address:
+                buf["dev_sold_amount"] += sol
         if sol < 0.01: buf["micro_trades"] += 1
-        buf["wallets"].add(data["traderPublicKey"])
+        buf["wallets"].add(trader_key)
         buf["v_sol"] = float(data["vSolInBondingCurve"])
         buf["mcap"] = price * 1_000_000_000
 
@@ -784,6 +792,20 @@ class Tracker:
         num_whale_buys = buf["whale_buys"]
         num_whale_sells = buf["whale_sells"]
         
+        # 5. Buy Pressure Ratio: buy_volume / (buy_volume + sell_volume)
+        total_volume = buf["vol_buy"] + buf["vol_sell"]
+        if total_volume > 0:
+            buy_pressure_ratio = buf["vol_buy"] / total_volume
+        else:
+            buy_pressure_ratio = 0.0
+        
+        # 6. Unique Signer Ratio: unique_wallets / (num_buys + num_sells)
+        total_trades = buf["buys"] + buf["sells"]
+        if total_trades > 0:
+            unique_signer_ratio = len(buf["wallets"]) / total_trades
+        else:
+            unique_signer_ratio = 0.0
+        
         return {
             "net_volume_sol": net_volume,
             "volatility_pct": volatility,
@@ -791,7 +813,9 @@ class Tracker:
             "whale_buy_volume_sol": whale_buy_vol,
             "whale_sell_volume_sol": whale_sell_vol,
             "num_whale_buys": num_whale_buys,
-            "num_whale_sells": num_whale_sells
+            "num_whale_sells": num_whale_sells,
+            "buy_pressure_ratio": buy_pressure_ratio,
+            "unique_signer_ratio": unique_signer_ratio
         }
 
     async def check_lifecycle_and_flush(self, now_ts):
@@ -840,7 +864,7 @@ class Tracker:
                         current_bonding_pct, buf["v_sol"], is_koth,
                         buf["vol"], buf["vol_buy"], buf["vol_sell"],
                         buf["buys"], buf["sells"], len(buf["wallets"]), buf["micro_trades"],
-                        0, buf["max_buy"], buf["max_sell"],
+                        buf["dev_sold_amount"], buf["max_buy"], buf["max_sell"],  # KRITISCH: dev_sold_amount jetzt implementiert
                         # NEU: Erweiterte Metriken
                         advanced_metrics["net_volume_sol"],
                         advanced_metrics["volatility_pct"],
@@ -848,7 +872,10 @@ class Tracker:
                         advanced_metrics["whale_buy_volume_sol"],
                         advanced_metrics["whale_sell_volume_sol"],
                         advanced_metrics["num_whale_buys"],
-                        advanced_metrics["num_whale_sells"]
+                        advanced_metrics["num_whale_sells"],
+                        # NEU: Ratio-Metriken
+                        advanced_metrics["buy_pressure_ratio"],
+                        advanced_metrics["unique_signer_ratio"]
                     ))
                     phases_in_batch.append(entry["meta"]["phase_id"])
                 entry["buffer"] = self.get_empty_buffer()
@@ -866,8 +893,10 @@ class Tracker:
                     -- NEU: Erweiterte Metriken
                     net_volume_sol, volatility_pct, avg_trade_size_sol,
                     whale_buy_volume_sol, whale_sell_volume_sol,
-                    num_whale_buys, num_whale_sells
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
+                    num_whale_buys, num_whale_sells,
+                    -- NEU: Ratio-Metriken
+                    buy_pressure_ratio, unique_signer_ratio
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
             """
             try:
                 with flush_duration.time():
@@ -879,17 +908,21 @@ class Tracker:
                 # Detailliertes Logging
                 print(f"💾 Saved metrics for {len(batch_data)} coins ({details})", flush=True)
                 
-                # Zeige Details für die ersten 3 Coins als Beispiel (inkl. erweiterte Metriken)
+                    # Zeige Details für die ersten 3 Coins als Beispiel (inkl. erweiterte Metriken)
                 for i, (mint, timestamp, phase_id, *rest) in enumerate(batch_data[:3]):
                     mint_short = mint[:8] + "..." if len(mint) > 8 else mint
                     # rest enthält: price_open, price_high, ..., max_single_sell_sol, net_volume_sol, volatility_pct, ...
-                    if len(rest) >= 27:  # Mindestens 27 Werte (inkl. neue Metriken)
+                    if len(rest) >= 29:  # Mindestens 29 Werte (inkl. alle neuen Metriken)
+                        dev_sold = rest[18] if len(rest) > 18 else 0  # dev_sold_amount (KRITISCH!)
                         net_vol = rest[20] if len(rest) > 20 else 0  # net_volume_sol
                         volatility = rest[21] if len(rest) > 21 else 0  # volatility_pct
                         avg_trade = rest[22] if len(rest) > 22 else 0  # avg_trade_size_sol
                         whale_buys = rest[25] if len(rest) > 25 else 0  # num_whale_buys
                         whale_sells = rest[26] if len(rest) > 26 else 0  # num_whale_sells
-                        print(f"   ✓ {mint_short} - Phase {phase_id} - {timestamp.strftime('%H:%M:%S')} | Net: {net_vol:.2f} SOL | Vol: {volatility:.1f}% | Whales: {whale_buys}B/{whale_sells}S", flush=True)
+                        buy_pressure = rest[27] if len(rest) > 27 else 0  # buy_pressure_ratio
+                        unique_ratio = rest[28] if len(rest) > 28 else 0  # unique_signer_ratio
+                        dev_warning = "⚠️ DEV SOLD!" if dev_sold > 0 else ""
+                        print(f"   ✓ {mint_short} - Phase {phase_id} - {timestamp.strftime('%H:%M:%S')} | Net: {net_vol:.2f} SOL | Vol: {volatility:.1f}% | Whales: {whale_buys}B/{whale_sells}S | BuyP: {buy_pressure:.2f} | Unique: {unique_ratio:.2f} {dev_warning}", flush=True)
                     else:
                         print(f"   ✓ {mint_short} - Phase {phase_id} - {timestamp.strftime('%H:%M:%S')}", flush=True)
                 
