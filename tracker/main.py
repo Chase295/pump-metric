@@ -150,6 +150,18 @@ async def start_health_server():
         # Coolify-spezifischer Endpoint (manche Versionen erwarten /)
         web.get("/", health_check)
     ])
+    
+    # CORS-Header für Coolify (falls nötig)
+    async def cors_middleware(app, handler):
+        async def middleware_handler(request):
+            response = await handler(request)
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = '*'
+            return response
+        return middleware_handler
+    
+    app.middlewares.append(cors_middleware)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", HEALTH_PORT)
