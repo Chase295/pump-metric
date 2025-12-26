@@ -119,6 +119,7 @@ async def health_check(request):
     return web.json_response(health_data, status=status_code)
 
 async def start_health_server():
+    """Startet den Health-Check Server - muss sofort verfügbar sein"""
     app = web.Application()
     app.add_routes([
         web.get("/health", health_check),
@@ -127,9 +128,10 @@ async def start_health_server():
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", HEALTH_PORT)
+    await site.start()
     print(f"🏥 Health-Check Server läuft auf Port {HEALTH_PORT}", flush=True)
     print(f"📊 Prometheus Metrics auf http://localhost:{HEALTH_PORT}/metrics", flush=True)
-    await site.start()
+    print(f"✅ Health-Endpoint verfügbar: http://0.0.0.0:{HEALTH_PORT}/health", flush=True)
 
 class Tracker:
     def __init__(self):
@@ -839,13 +841,20 @@ async def start_tracker():
     await tracker.run()
 
 async def main():
+    # Starte Health-Server ZUERST, damit er sofort verfügbar ist
+    health_task = asyncio.create_task(start_health_server())
+    # Warte kurz, damit Health-Server startet
+    await asyncio.sleep(1)
+    
     print(f"🔧 Konfiguration:", flush=True)
     print(f"  - DB_REFRESH_INTERVAL: {DB_REFRESH_INTERVAL}s", flush=True)
     print(f"  - WS_PING_INTERVAL: {WS_PING_INTERVAL}s", flush=True)
     print(f"  - WS_CONNECTION_TIMEOUT: {WS_CONNECTION_TIMEOUT}s", flush=True)
     print(f"  - WS_URI: {WS_URI}", flush=True)
     print(f"  - TRADE_BUFFER_SECONDS: {TRADE_BUFFER_SECONDS}s ({TRADE_BUFFER_SECONDS//60} Minuten) (Pre-Subscription + Buffer)", flush=True)
-    await asyncio.gather(start_tracker(), start_health_server())
+    # Health-Server läuft bereits (wurde oben gestartet)
+    # Starte nur noch den Tracker
+    await start_tracker()
 
 if __name__ == "__main__":
     try:

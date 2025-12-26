@@ -16,7 +16,7 @@ COPY db_migration.py .
 EXPOSE 8000
 
 # Healthcheck
-HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=5 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Graceful Shutdown
