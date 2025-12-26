@@ -9,9 +9,11 @@ venv/
 ENV/
 .venv
 
-# Environment variables
-.env
+# Environment variables (aber .env wird für Coolify benötigt)
+# .env wird im Repository behalten, damit Coolify es überschreiben kann
 .env.local
+.env.*
+!.env
 
 # IDE
 .vscode/
