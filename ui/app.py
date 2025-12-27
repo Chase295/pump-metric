@@ -856,7 +856,10 @@ with tab4:
             'tracker_db_connected',
             'tracker_uptime_seconds',
             'tracker_trade_buffer_size',
-            'tracker_buffer_trades_total'
+            'tracker_buffer_trades_total',
+            # NEU: ATH-Tracking Metriken
+            'tracker_ath_updates_total',
+            'tracker_ath_cache_size'
         ]
         
         cols = st.columns(3)
@@ -1108,6 +1111,10 @@ with tab5:
     
     st.markdown("""
     **Zweck**: Die Tabelle `coin_streams` steuert, welche Coins vom **pump-metric** System getrackt werden.
+    
+    **NEU - ATH-Tracking**: Die Tabelle wurde um ATH-Tracking erweitert:
+    - `ath_price_sol`: All-Time High Preis in SOL (wird live getrackt)
+    - `ath_timestamp`: Timestamp des letzten ATH-Updates
     Nur Coins mit `is_active = TRUE` werden für das Tracking berücksichtigt.
     """)
     
@@ -2081,7 +2088,64 @@ if sol_amount >= WHALE_THRESHOLD_SOL:  # Standard: 1.0 SOL
     
     st.divider()
     
-    st.header("📊 8. Erweiterte Metriken (Neu)")
+    st.header("📈 8. ATH-Tracking (All-Time High) - NEU")
+    
+    st.markdown("""
+    Das System trackt automatisch den höchsten Preis jedes Coins in Echtzeit:
+    """)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        **Hybrid-System**:
+        - **RAM-Cache**: ATH wird im Speicher gehalten für Millisekunden-Entscheidungen
+        - **DB-Persistenz**: ATH wird periodisch (alle 5 Sekunden) in `coin_streams.ath_price_sol` gespeichert
+        - **Performance**: Batch-Updates minimieren DB-Last (nur geänderte Werte)
+        
+        **Funktionsweise**:
+        1. Bei jedem Trade wird der aktuelle Preis mit dem bekannten ATH verglichen
+        2. Wenn neuer Preis > ATH: Cache wird aktualisiert, Coin wird für DB-Update markiert
+        3. Alle 5 Sekunden werden geänderte ATH-Werte in die DB geschrieben
+        4. Beim Neustart werden ATH-Werte aus der DB geladen
+        """)
+    
+    with col2:
+        st.markdown("""
+        **Datenbank-Schema**:
+        ```sql
+        -- In coin_streams Tabelle
+        ath_price_sol NUMERIC DEFAULT 0      -- All-Time High Preis
+        ath_timestamp TIMESTAMPTZ            -- Timestamp des letzten Updates
+        ```
+        
+        **Prometheus-Metriken**:
+        - `tracker_ath_updates_total`: Anzahl ATH-Updates in DB
+        - `tracker_ath_cache_size`: Anzahl Coins im ATH-Cache
+        
+        **Konfiguration**:
+        - `ATH_FLUSH_INTERVAL`: Sekunden zwischen ATH-Flushes (Standard: 5s)
+        """)
+    
+    st.code("""
+-- Top 10 Coins nach ATH
+SELECT token_address, ath_price_sol, ath_timestamp 
+FROM coin_streams 
+WHERE is_active = TRUE 
+ORDER BY ath_price_sol DESC 
+LIMIT 10;
+
+-- Coins mit ATH-Updates in den letzten 10 Minuten
+SELECT token_address, ath_price_sol, ath_timestamp 
+FROM coin_streams 
+WHERE is_active = TRUE 
+  AND ath_timestamp > NOW() - INTERVAL '10 minutes'
+ORDER BY ath_timestamp DESC;
+    """, language="sql")
+    
+    st.divider()
+    
+    st.header("📊 9. Erweiterte Metriken (Neu)")
     
     st.markdown("""
     Seit der letzten Erweiterung werden zusätzliche Metriken berechnet, die tiefere Einblicke in das Trade-Verhalten geben:

@@ -6,7 +6,8 @@ Automatisches Tracking-System für Pump.fun Coins mit detaillierten Metriken und
 
 - **Automatisches Coin-Tracking**: Trackt alle aktiven Coins aus `coin_streams`
 - **Echtzeit-Trade-Verarbeitung**: WebSocket-Verbindung zu Pump.fun für Live-Trades
-- **60-Sekunden-Buffer**: Verpasste Trades werden rückwirkend verarbeitet
+- **180-Sekunden-Buffer**: Verpasste Trades werden rückwirkend verarbeitet (3 Minuten)
+- **ATH-Tracking**: All-Time High wird live getrackt (RAM + DB für Persistenz)
 - **Automatische Schema-Migration**: Datenbank-Schema wird automatisch erstellt/aktualisiert
 - **Prometheus-Metriken**: Detaillierte Metriken über `/metrics` Endpoint
 - **Streamlit UI**: Web-Interface für Monitoring und Konfiguration
@@ -67,6 +68,8 @@ docker compose logs -f tracker
 | `WS_URI` | `wss://pumpportal.fun/api/data` | WebSocket URI für Trades |
 | `DB_REFRESH_INTERVAL` | `10` | Sekunden zwischen DB-Aktualisierungen |
 | `TRADE_BUFFER_SECONDS` | `180` | Buffer-Dauer in Sekunden (3 Minuten) |
+| `WHALE_THRESHOLD_SOL` | `1.0` | Schwellenwert für Whale-Trades (in SOL) |
+| `ATH_FLUSH_INTERVAL` | `5` | Sekunden zwischen ATH-DB-Updates |
 | `SOL_RESERVES_FULL` | `85.0` | SOL-Betrag für vollständige Bonding Curve |
 | `AGE_CALCULATION_OFFSET_MIN` | `60` | Offset für Altersberechnung in Minuten |
 | `HEALTH_PORT` | `8000` | Port für Health-Check und Metriken |
@@ -80,7 +83,38 @@ Das System erkennt automatisch fehlende Tabellen/Spalten und erstellt sie beim S
 
 **Wichtig**: Bei DB-Änderungen wird das Schema automatisch aktualisiert - kein manueller Neustart nötig!
 
+### ATH-Tracking (All-Time High)
+
+Das System trackt automatisch den höchsten Preis jedes Coins:
+
+- **RAM-Cache**: ATH wird im Speicher gehalten für Millisekunden-Entscheidungen
+- **DB-Persistenz**: ATH wird periodisch (alle 5 Sekunden) in `coin_streams.ath_price_sol` gespeichert
+- **Automatisch**: Keine Konfiguration nötig - funktioniert out-of-the-box
+- **Performance**: Batch-Updates minimieren DB-Last (nur geänderte Werte)
+
+**Verwendung**:
+```sql
+-- Top 10 Coins nach ATH
+SELECT token_address, ath_price_sol, ath_timestamp 
+FROM coin_streams 
+WHERE is_active = TRUE 
+ORDER BY ath_price_sol DESC 
+LIMIT 10;
+```
+
 ## 📊 Datenbank-Schema
+
+### coin_streams (erweitert)
+
+Die `coin_streams` Tabelle wurde um ATH-Tracking erweitert:
+
+```sql
+-- ATH-Spalten (automatisch erstellt)
+ath_price_sol NUMERIC DEFAULT 0      -- All-Time High Preis in SOL
+ath_timestamp TIMESTAMPTZ              -- Timestamp des letzten ATH-Updates
+```
+
+**Index**: `idx_streams_ath_price` für schnelle ATH-Abfragen
 
 ### coin_metrics
 
@@ -145,6 +179,11 @@ CREATE TABLE coin_metrics (
 
 Das System sammelt folgende Prometheus-Metriken:
 
+### ATH-Tracking Metriken
+- `tracker_ath_updates_total` - Anzahl ATH-Updates in DB (Counter)
+- `tracker_ath_cache_size` - Anzahl Coins im ATH-Cache (Gauge)
+
+### Standard-Metriken
 - `tracker_trades_received_total` - Empfangene Trades
 - `tracker_trades_processed_total` - Verarbeitete Trades
 - `tracker_metrics_saved_total` - Gespeicherte Metriken

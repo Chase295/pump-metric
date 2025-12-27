@@ -161,6 +161,42 @@ async def _check_schema(conn):
             print("⚠️  coin_streams Tabelle nicht gefunden - wird von pump-discover erstellt", flush=True)
         else:
             print("✅ coin_streams Tabelle vorhanden", flush=True)
+            
+            # NEU: Prüfe ATH-Spalten in coin_streams
+            ath_columns = await conn.fetch("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'coin_streams' 
+                AND column_name IN ('ath_price_sol', 'ath_timestamp')
+            """)
+            existing_ath_columns = {row['column_name'] for row in ath_columns}
+            
+            if 'ath_price_sol' not in existing_ath_columns:
+                print("📊 Füge ath_price_sol Spalte zu coin_streams hinzu...", flush=True)
+                await conn.execute("ALTER TABLE coin_streams ADD COLUMN IF NOT EXISTS ath_price_sol NUMERIC DEFAULT 0;")
+                print("✅ ath_price_sol hinzugefügt", flush=True)
+            
+            if 'ath_timestamp' not in existing_ath_columns:
+                print("📊 Füge ath_timestamp Spalte zu coin_streams hinzu...", flush=True)
+                await conn.execute("ALTER TABLE coin_streams ADD COLUMN IF NOT EXISTS ath_timestamp TIMESTAMPTZ;")
+                print("✅ ath_timestamp hinzugefügt", flush=True)
+            
+            # Prüfe ob ATH-Index existiert
+            ath_index_exists = await conn.fetchval("""
+                SELECT EXISTS (
+                    SELECT FROM pg_indexes 
+                    WHERE tablename = 'coin_streams' 
+                    AND indexname = 'idx_streams_ath_price'
+                )
+            """)
+            if not ath_index_exists:
+                print("📊 Erstelle Index idx_streams_ath_price...", flush=True)
+                await conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_streams_ath_price 
+                    ON coin_streams(ath_price_sol DESC) 
+                    WHERE is_active = TRUE AND ath_price_sol > 0;
+                """)
+                print("✅ ATH-Index erstellt", flush=True)
         
         # Prüfe discovered_coins Tabelle
         discovered_exists = await conn.fetchval("""

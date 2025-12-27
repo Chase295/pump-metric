@@ -28,11 +28,12 @@ WS_CONNECTION_TIMEOUT = int(os.getenv("WS_CONNECTION_TIMEOUT", "30"))
 HEALTH_PORT = int(os.getenv("HEALTH_PORT", "8000"))
 TRADE_BUFFER_SECONDS = int(os.getenv("TRADE_BUFFER_SECONDS", "180"))  # 180 Sekunden (3 Minuten) Buffer für verpasste Trades
 WHALE_THRESHOLD_SOL = float(os.getenv("WHALE_THRESHOLD_SOL", "1.0"))  # Schwellenwert für Whale-Trades (Standard: 1.0 SOL)
+ATH_FLUSH_INTERVAL = int(os.getenv("ATH_FLUSH_INTERVAL", "5"))  # Sekunden zwischen ATH-Flushes (Standard: 5s)
 
 def load_config_from_file():
     """Lädt Konfiguration aus .env Datei (im geteilten Volume) - überschreibt Environment Variables"""
     global DB_DSN, WS_URI, DB_REFRESH_INTERVAL, SOL_RESERVES_FULL, AGE_CALCULATION_OFFSET_MIN
-    global TRADE_BUFFER_SECONDS, WHALE_THRESHOLD_SOL, DB_RETRY_DELAY, WS_RETRY_DELAY
+    global TRADE_BUFFER_SECONDS, WHALE_THRESHOLD_SOL, ATH_FLUSH_INTERVAL, DB_RETRY_DELAY, WS_RETRY_DELAY
     global WS_MAX_RETRY_DELAY, WS_PING_INTERVAL, WS_PING_TIMEOUT, WS_CONNECTION_TIMEOUT
     
     config_file = "/app/config/.env"
@@ -69,6 +70,8 @@ def load_config_from_file():
                                     WHALE_THRESHOLD_SOL = float(value)
                                 except:
                                     pass
+                            elif key == "ATH_FLUSH_INTERVAL" and value.isdigit():
+                                ATH_FLUSH_INTERVAL = int(value)
                             elif key == "DB_RETRY_DELAY" and value.isdigit():
                                 DB_RETRY_DELAY = int(value)
                             elif key == "WS_RETRY_DELAY" and value.isdigit():
@@ -115,6 +118,8 @@ db_query_duration = Histogram("tracker_db_query_duration_seconds", "Dauer von DB
 flush_duration = Histogram("tracker_flush_duration_seconds", "Dauer von Metric-Flushes")
 buffer_size = Gauge("tracker_trade_buffer_size", "Anzahl Trades im Buffer")
 buffer_trades_total = PromCounter("tracker_buffer_trades_total", "Gesamt Trades im Buffer gespeichert")
+ath_updates_total = PromCounter("tracker_ath_updates_total", "Anzahl ATH-Updates in DB")
+ath_cache_size = Gauge("tracker_ath_cache_size", "Anzahl Coins im ATH-Cache")
 
 # --- STATUS TRACKING ---
 tracker_status = {
@@ -334,6 +339,10 @@ class Tracker:
         self.last_buffer_cleanup = time.time()
         # Track welche Coins bereits über subscribeNewToken abonniert wurden
         self.early_subscribed_mints = set()
+        # NEU: ATH-Tracking
+        self.ath_cache = {}  # {mint: ath_price} - RAM-Cache für sofortige Verfügbarkeit
+        self.dirty_aths = set()  # {mint} - Set von Coins, deren ATH in DB geschrieben werden muss
+        self.last_ath_flush = time.time()  # Timestamp des letzten ATH-Flush
 
     async def init_db_connection(self):
         while True:
@@ -381,9 +390,11 @@ class Tracker:
                     # Funktion existiert möglicherweise noch nicht - ignorieren
                     pass
                 
-                # Dann: Hole aktive Streams
+                # Dann: Hole aktive Streams (MIT ATH)
                 sql = """
-                    SELECT cs.token_address, cs.current_phase_id, dc.token_created_at, cs.started_at, dc.trader_public_key
+                    SELECT cs.token_address, cs.current_phase_id, dc.token_created_at, 
+                           cs.started_at, dc.trader_public_key,
+                           cs.ath_price_sol  -- NEU: ATH mit abfragen
                     FROM coin_streams cs
                     JOIN discovered_coins dc ON cs.token_address = dc.token_address
                     WHERE cs.is_active = TRUE
@@ -397,12 +408,30 @@ class Tracker:
                     if not created_at: created_at = datetime.now(timezone.utc)
                     if created_at.tzinfo is None: created_at = created_at.replace(tzinfo=timezone.utc)
                     if started_at and started_at.tzinfo is None: started_at = started_at.replace(tzinfo=timezone.utc)
+                    
+                    # NEU: ATH aus DB laden und in Cache speichern
+                    db_ath = row.get("ath_price_sol")
+                    if db_ath is None:
+                        db_ath = 0.0
+                    else:
+                        db_ath = float(db_ath)
+                    
+                    # Cache füllen (wichtig für sofortige Verfügbarkeit)
+                    if mint not in self.ath_cache:
+                        self.ath_cache[mint] = db_ath
+                    elif self.ath_cache[mint] < db_ath:
+                        # DB hat höheren Wert - aktualisiere Cache
+                        self.ath_cache[mint] = db_ath
+                    
                     results[mint] = {
                         "phase_id": row["current_phase_id"],
                         "created_at": created_at,
                         "started_at": started_at or created_at,
                         "creator_address": row.get("trader_public_key")  # Dev-Wallet für Rug-Pull-Erkennung
                     }
+                
+                # NEU: Prometheus-Metrik für ATH-Cache-Größe aktualisieren
+                ath_cache_size.set(len(self.ath_cache))
                 
                 # Prüfe auf Lücken (nur alle 60 Sekunden, um Performance zu schonen)
                 if not hasattr(self, '_last_gap_check') or (time.time() - self._last_gap_check) > 60:
@@ -465,6 +494,8 @@ class Tracker:
         finally:
             if mint in self.watchlist: del self.watchlist[mint]
             if mint in self.subscribed_mints: self.subscribed_mints.remove(mint)
+            # NEU: ATH-Cache aufräumen (dirty_aths entfernen, Cache kann bleiben für historische Daten)
+            if mint in self.dirty_aths: self.dirty_aths.remove(mint)
             coins_tracked.set(len(self.watchlist))
 
     def get_empty_buffer(self):
@@ -782,6 +813,10 @@ class Tracker:
                             self.last_buffer_cleanup = now_ts
                         
                         await self.check_lifecycle_and_flush(now_ts)
+                        
+                        # NEU: ATH-Updates periodisch (alle ATH_FLUSH_INTERVAL Sekunden)
+                        if now_ts - self.last_ath_flush > ATH_FLUSH_INTERVAL:
+                            await self.flush_ath_updates()
             
             except websockets.exceptions.WebSocketException as e:
                 tracker_status["ws_connected"] = False
@@ -921,6 +956,24 @@ class Tracker:
             is_buy = data["txType"] == "buy"
             trader_key = data.get("traderPublicKey", "")
         except: return
+        
+        # --- NEUER ATH CHECK START ---
+        # 1. Hole aktuelles ATH aus RAM (oder 0.0 wenn nicht vorhanden)
+        known_ath = self.ath_cache.get(mint, 0.0)
+        
+        # 2. Ist der aktuelle Preis höher?
+        if price > known_ath:
+            # Update im RAM (Sofort verfügbar für Logik)
+            self.ath_cache[mint] = price
+            
+            # Markiere für DB-Update (nicht sofort schreiben, das bremst!)
+            self.dirty_aths.add(mint)
+            
+            # Optional: Logging für Debugging (nur bei signifikanten Änderungen)
+            if known_ath > 0 and price > known_ath * 1.1:  # Nur loggen wenn >10% höher
+                print(f"📈 ATH Update: {mint[:8]}... {known_ath:.6f} -> {price:.6f} SOL (+{((price/known_ath-1)*100):.1f}%)", flush=True)
+        # --- NEUER ATH CHECK ENDE ---
+        
         if buf["open"] is None: buf["open"] = price
         buf["close"] = price
         buf["high"] = max(buf["high"], price)
@@ -1004,7 +1057,60 @@ class Tracker:
             "buy_pressure_ratio": buy_pressure_ratio,
             "unique_signer_ratio": unique_signer_ratio
         }
-
+    
+    async def flush_ath_updates(self):
+        """
+        Schreibt geänderte ATH-Werte in die Datenbank (Batch-Update)
+        Wird periodisch aufgerufen, um DB-Last zu minimieren
+        """
+        if not self.dirty_aths:
+            return  # Keine Änderungen
+        
+        if not self.pool or not tracker_status["db_connected"]:
+            # DB nicht verbunden - behalte dirty_aths für später
+            return
+        
+        # Liste für Batch-Update vorbereiten
+        updates = []
+        for mint in self.dirty_aths:
+            new_ath = self.ath_cache.get(mint, 0.0)
+            if new_ath > 0:  # Nur positive Werte speichern
+                updates.append((new_ath, mint))
+        
+        if not updates:
+            self.dirty_aths.clear()
+            return
+        
+        try:
+            # SQL für Massen-Update (extrem effizient - nur ein DB-Call für alle Updates)
+            query = """
+                UPDATE coin_streams 
+                SET ath_price_sol = $1, ath_timestamp = NOW()
+                WHERE token_address = $2
+            """
+            
+            async with self.pool.acquire() as conn:
+                # Führt alle Updates in einem Rutsch aus (executemany ist sehr schnell)
+                await conn.executemany(query, updates)
+            
+            # Nach erfolgreichem Schreiben: Liste leeren
+            updated_count = len(updates)
+            self.dirty_aths.clear()
+            self.last_ath_flush = time.time()
+            
+            # Prometheus-Metriken aktualisieren
+            ath_updates_total.inc(updated_count)
+            ath_cache_size.set(len(self.ath_cache))
+            
+            # Optional: Logging (nur bei vielen Updates)
+            if updated_count > 10:
+                print(f"💾 ATH-Update: {updated_count} Coins in DB gespeichert", flush=True)
+        
+        except Exception as e:
+            print(f"❌ Fehler beim ATH-Update: {e}", flush=True)
+            # Fehler ignorieren - dirty_aths bleibt gesetzt, wird beim nächsten Mal erneut versucht
+            db_errors.labels(type="ath_update").inc()
+        
     async def check_lifecycle_and_flush(self, now_ts):
         batch_data = []
         phases_in_batch = []
